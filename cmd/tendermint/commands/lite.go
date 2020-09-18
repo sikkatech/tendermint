@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -65,6 +66,8 @@ var (
 
 	primaryKey   = []byte("primary")
 	witnessesKey = []byte("witnesses")
+
+	storeNameRegexp string
 )
 
 func init() {
@@ -91,6 +94,9 @@ func init() {
 	)
 	LightCmd.Flags().BoolVar(&sequential, "sequential", false,
 		"sequential verification. Verify all headers sequentially as opposed to using skipping verification",
+	)
+	LightCmd.Flags().StringVar(&storeNameRegexp, "store-name-regexp", `\/store\/(.+)\/key`,
+		"Regexp for extracting store from abci_query path (needed for abci_query to work)",
 	)
 }
 
@@ -193,10 +199,15 @@ func runProxy(cmd *cobra.Command, args []string) error {
 		cfg.WriteTimeout = config.RPC.TimeoutBroadcastTxCommit + 1*time.Second
 	}
 
+	str, err := regexp.Compile(storeNameRegexp)
+	if err != nil {
+		return fmt.Errorf("can't compile store-name-regexp: %w", err)
+	}
+
 	p := lproxy.Proxy{
 		Addr:   listenAddr,
 		Config: cfg,
-		Client: lrpc.NewClient(rpcClient, c),
+		Client: lrpc.NewClient(rpcClient, c, lrpc.StoreNameRegexp(str)),
 		Logger: logger,
 	}
 	// Stop upon receiving SIGTERM or CTRL-C.
