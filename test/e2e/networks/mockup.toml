@@ -19,10 +19,19 @@ validator02 = 30
 validator03 = 20
 validator04 = 10
 
+[node.seed01]
+mode = "seed"
+seeds = ["seed02"]
+
+[node.seed02]
+mode = "seed"
+seeds = ["seed01"]
+
 [node.validator01]
+mode = "validator"
 database = "goleveldb"
 retain_blocks = 1
-persistent_peers = ["validator02", "validator03", "validator04"]
+seeds = ["seed01", "seed02"]
 
 [node.validator02]
 database = "boltdb"
@@ -30,14 +39,14 @@ abci_protocol = "tcp"
 privval_protocol = "tcp"
 persist_interval = 3
 retain_blocks = 3
-persistent_peers = ["validator01", "validator03", "validator04"]
+seeds = ["seed01", "seed02"]
 
 [node.validator03]
 database = "badgerdb"
 abci_protocol = "unix"
 privval_protocol = "unix"
 persist_interval = 0
-persistent_peers = ["validator01", "validator02", "validator04"]
+seeds = ["seed01", "seed02"]
 
 [node.validator04]
 database = "rocksdb"

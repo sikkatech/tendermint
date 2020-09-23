@@ -163,6 +163,8 @@ func MakeConfig(testnet *Testnet, node *Node) (*config.Config, error) {
 	cfg.Moniker = node.Name
 	cfg.ProxyApp = "tcp://127.0.0.1:30000"
 	cfg.RPC.ListenAddress = "tcp://0.0.0.0:26657"
+	cfg.P2P.ExternalAddress = fmt.Sprintf("tcp://%v", node.Address())
+	cfg.P2P.AddrBookStrict = false
 	cfg.DBBackend = node.Database
 
 	switch node.ABCIProtocol {
@@ -177,24 +179,36 @@ func MakeConfig(testnet *Testnet, node *Node) (*config.Config, error) {
 		return nil, fmt.Errorf("unexpected ABCI protocol setting %q", node.ABCIProtocol)
 	}
 
-	// We have to set the key- and state-files regardless of whether they're actually used.
-	switch node.PrivvalProtocol {
-	case "file":
-		cfg.PrivValidatorKey = "config/priv_validator_key.json"
-		cfg.PrivValidatorState = "config/priv_validator_key.json"
+	switch node.Mode {
+	case "validator":
+		// We have to set the key- and state-files regardless of whether they're actually used.
+		switch node.PrivvalProtocol {
+		case "file":
+			cfg.PrivValidatorKey = "config/priv_validator_key.json"
+			cfg.PrivValidatorState = "config/priv_validator_key.json"
+			cfg.PrivValidatorListenAddr = ""
+		case "unix":
+			cfg.PrivValidatorListenAddr = "unix:///var/run/privval.sock"
+			// Errors if not given, so pass a dummy key to make sure the remote is actually used.
+			cfg.PrivValidatorKey = "config/dummy_validator_key.json"
+			cfg.PrivValidatorState = "config/dummy_validator_key.json"
+		case "tcp":
+			cfg.PrivValidatorListenAddr = "tcp://0.0.0.0:27559"
+			// Errors if not given, so pass a dummy key to make sure the remote is actually used.
+			cfg.PrivValidatorKey = "config/dummy_validator_key.json"
+			cfg.PrivValidatorState = "config/dummy_validator_key.json"
+		default:
+			return nil, fmt.Errorf("invalid privval protocol setting %q", node.PrivvalProtocol)
+		}
+	case "seed":
+		// Errors if not given, so pass a dummy key.
+		cfg.PrivValidatorKey = "config/dummy_validator_key.json"
+		cfg.PrivValidatorState = "config/dummy_validator_key.json"
 		cfg.PrivValidatorListenAddr = ""
-	case "unix":
-		cfg.PrivValidatorListenAddr = "unix:///var/run/privval.sock"
-		// Errors if not given, so pass a dummy key to make sure the remote is actually used.
-		cfg.PrivValidatorKey = "config/dummy_validator_key.json"
-		cfg.PrivValidatorState = "config/dummy_validator_key.json"
-	case "tcp":
-		cfg.PrivValidatorListenAddr = "tcp://0.0.0.0:27559"
-		// Errors if not given, so pass a dummy key to make sure the remote is actually used.
-		cfg.PrivValidatorKey = "config/dummy_validator_key.json"
-		cfg.PrivValidatorState = "config/dummy_validator_key.json"
+		cfg.P2P.SeedMode = true
+		cfg.P2P.PexReactor = true
 	default:
-		return nil, fmt.Errorf("invalid privval protocol setting %q", node.PrivvalProtocol)
+		return nil, fmt.Errorf("unexpected mode %q", node.Mode)
 	}
 
 	if node.FastSync == "" {
@@ -203,18 +217,19 @@ func MakeConfig(testnet *Testnet, node *Node) (*config.Config, error) {
 		cfg.FastSync.Version = node.FastSync
 	}
 
+	cfg.P2P.Seeds = ""
+	for _, seed := range node.Seeds {
+		if len(cfg.P2P.Seeds) > 0 {
+			cfg.P2P.Seeds += ","
+		}
+		cfg.P2P.Seeds += seed.AddressWithID()
+	}
 	cfg.P2P.PersistentPeers = ""
 	for _, peer := range node.PersistentPeers {
 		if len(cfg.P2P.PersistentPeers) > 0 {
 			cfg.P2P.PersistentPeers += ","
 		}
-		ip := peer.IP.String()
-		if peer.IP.To4() == nil {
-			// IPv6 addresses must be wrapped in [] to avoid conflict with : port separator
-			ip = fmt.Sprintf("[%v]", ip)
-		}
-		cfg.P2P.PersistentPeers += fmt.Sprintf("%x@%v:26656",
-			peer.Key.PubKey().Address().Bytes(), ip)
+		cfg.P2P.PersistentPeers += peer.AddressWithID()
 	}
 	return cfg, nil
 }

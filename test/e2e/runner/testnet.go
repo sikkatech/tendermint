@@ -46,6 +46,7 @@ type Testnet struct {
 // Node represents a Tendermint node in a testnet
 type Node struct {
 	Name            string
+	Mode            string
 	Key             crypto.PrivKey
 	IP              net.IP
 	ProxyPort       uint32
@@ -56,6 +57,7 @@ type Node struct {
 	PrivvalProtocol string
 	PersistInterval uint64
 	RetainBlocks    uint64
+	Seeds           []*Node
 	PersistentPeers []*Node
 }
 
@@ -94,11 +96,18 @@ func NewTestnet(manifest Manifest) (*Testnet, error) {
 		proxyPort++
 	}
 
-	// We do a second pass to set up persistent peers, which allows graph cycles.
+	// We do a second pass to set up seeds and persistent peers, which allows graph cycles.
 	for _, node := range testnet.Nodes {
 		nodeManifest, ok := manifest.Nodes[node.Name]
 		if !ok {
 			return nil, fmt.Errorf("failed to look up manifest for node %q", node.Name)
+		}
+		for _, seedName := range nodeManifest.Seeds {
+			seed := testnet.LookupNode(seedName)
+			if seed == nil {
+				return nil, fmt.Errorf("unknown seed %q for node %q", seedName, node.Name)
+			}
+			node.Seeds = append(node.Seeds, seed)
 		}
 		for _, peerName := range nodeManifest.PersistentPeers {
 			peer := testnet.LookupNode(peerName)
@@ -134,6 +143,7 @@ func NewNode(name string, ip net.IP, proxyPort uint32, nodeManifest ManifestNode
 		Key:             ed25519.GenPrivKey(),
 		IP:              ip,
 		ProxyPort:       proxyPort,
+		Mode:            "validator",
 		StartAt:         nodeManifest.StartAt,
 		FastSync:        nodeManifest.FastSync,
 		Database:        "goleveldb",
@@ -141,6 +151,9 @@ func NewNode(name string, ip net.IP, proxyPort uint32, nodeManifest ManifestNode
 		PrivvalProtocol: "file",
 		PersistInterval: 1,
 		RetainBlocks:    nodeManifest.RetainBlocks,
+	}
+	if nodeManifest.Mode != "" {
+		node.Mode = nodeManifest.Mode
 	}
 	if nodeManifest.Database != "" {
 		node.Database = nodeManifest.Database
@@ -205,6 +218,11 @@ func (n Node) Validate(testnet Testnet) error {
 			}
 		}
 	}
+	switch n.Mode {
+	case "validator", "seed":
+	default:
+		return fmt.Errorf("invalid mode %q", n.Mode)
+	}
 	switch n.FastSync {
 	case "", "v0", "v1", "v2":
 	default:
@@ -248,6 +266,21 @@ func (t Testnet) LookupNode(name string) *Node {
 // IPv6 returns true if the testnet is an IPv6 network.
 func (t Testnet) IPv6() bool {
 	return t.IP.IP.To4() == nil
+}
+
+// Address returns a P2P endpoint address for the node.
+func (n Node) Address() string {
+	ip := n.IP.String()
+	if n.IP.To4() == nil {
+		// IPv6 addresses must be wrapped in [] to avoid conflict with : port separator
+		ip = fmt.Sprintf("[%v]", ip)
+	}
+	return fmt.Sprintf("%v:26656", ip)
+}
+
+// Address returns a P2P endpoint address for the node, including the node ID.
+func (n Node) AddressWithID() string {
+	return fmt.Sprintf("%x@%v", n.Key.PubKey().Address().Bytes(), n.Address())
 }
 
 // Client returns an RPC client for a node.

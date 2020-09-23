@@ -176,11 +176,17 @@ func (cli *CLI) Start() error {
 		return nodeQueue[i].StartAt < nodeQueue[j].StartAt
 	})
 
-	// We'll use the first node as our main node for network status
-	if len(nodeQueue) == 0 || nodeQueue[0].StartAt > 0 {
+	// We'll use the first non-seed node as our main node for network status
+	var mainNode *Node
+	for _, node := range nodeQueue {
+		if node.StartAt == 0 && node.Mode != "seed" {
+			mainNode = node
+			break
+		}
+	}
+	if mainNode == nil {
 		return fmt.Errorf("no initial nodes found")
 	}
-	mainNode := nodeQueue[0]
 
 	// Start initial nodes (StartAt: 0)
 	logger.Info("Starting initial network nodes...")
