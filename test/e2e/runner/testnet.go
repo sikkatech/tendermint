@@ -39,6 +39,7 @@ type Node struct {
 	PrivvalProtocol string
 	PersistInterval uint64
 	RetainBlocks    uint64
+	PersistentPeers []*Node
 }
 
 // NewTestnet creates a testnet from a manifest.
@@ -70,6 +71,21 @@ func NewTestnet(manifest Manifest) (*Testnet, error) {
 	sort.Slice(testnet.Nodes, func(i, j int) bool {
 		return strings.Compare(testnet.Nodes[i].Name, testnet.Nodes[j].Name) == -1
 	})
+
+	// We do a second pass to set up persistent peers, which allows graph cycles.
+	for _, node := range testnet.Nodes {
+		nodeManifest, ok := manifest.Nodes[node.Name]
+		if !ok {
+			return nil, fmt.Errorf("failed to look up manifest for node %q", node.Name)
+		}
+		for _, peerName := range nodeManifest.PersistentPeers {
+			peer := testnet.LookupNode(peerName)
+			if peer == nil {
+				return nil, fmt.Errorf("unknown persistent peer %q for node %q", peerName, node.Name)
+			}
+			node.PersistentPeers = append(node.PersistentPeers, peer)
+		}
+	}
 
 	for heightStr, validators := range manifest.ValidatorUpdates {
 		height, err := strconv.Atoi(heightStr)

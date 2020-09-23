@@ -203,18 +203,18 @@ func MakeConfig(testnet *Testnet, node *Node) (*config.Config, error) {
 		cfg.FastSync.Version = node.FastSync
 	}
 
-	for _, peer := range testnet.Nodes {
-		if peer.Name == node.Name {
-			continue
-		}
-		if cfg.P2P.PersistentPeers != "" {
+	cfg.P2P.PersistentPeers = ""
+	for _, peer := range node.PersistentPeers {
+		if len(cfg.P2P.PersistentPeers) > 0 {
 			cfg.P2P.PersistentPeers += ","
 		}
-		if testnet.IsIPv6() {
-			cfg.P2P.PersistentPeers += fmt.Sprintf("%x@[%v]:%v", peer.Key.PubKey().Address().Bytes(), peer.IP, 26656)
-		} else {
-			cfg.P2P.PersistentPeers += fmt.Sprintf("%x@%v:%v", peer.Key.PubKey().Address().Bytes(), peer.IP, 26656)
+		ip := peer.IP.String()
+		if peer.IP.To4() == nil {
+			// IPv6 addresses must be wrapped in [] to avoid conflict with : port separator
+			ip = fmt.Sprintf("[%v]", ip)
 		}
+		cfg.P2P.PersistentPeers += fmt.Sprintf("%x@%v:26656",
+			peer.Key.PubKey().Address().Bytes(), ip)
 	}
 	return cfg, nil
 }

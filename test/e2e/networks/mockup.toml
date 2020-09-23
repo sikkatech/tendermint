@@ -24,6 +24,7 @@ ip = "10.200.0.2"
 proxyport = 5701
 database = "goleveldb"
 retain_blocks = 1
+persistent_peers = ["validator02", "validator03", "validator04"]
 
 [node.validator02]
 ip = "10.200.0.3"
@@ -33,6 +34,7 @@ abci_protocol = "tcp"
 privval_protocol = "tcp"
 persist_interval = 3
 retain_blocks = 3
+persistent_peers = ["validator01", "validator03", "validator04"]
 
 [node.validator03]
 ip = "10.200.0.4"
@@ -41,6 +43,7 @@ database = "badgerdb"
 abci_protocol = "unix"
 privval_protocol = "unix"
 persist_interval = 0
+persistent_peers = ["validator01", "validator02", "validator04"]
 
 [node.validator04]
 ip = "10.200.0.5"
@@ -49,3 +52,4 @@ database = "rocksdb"
 start_at = 1010
 fast_sync = "v2"
 abci_protocol = "grpc"
+persistent_peers = ["validator01", "validator02", "validator03"]
