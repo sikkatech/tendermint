@@ -42,6 +42,11 @@ need a primary RPC address, a trusted hash and height and witness RPC addresses
 (if not using sequential verification). To restart the node, thereafter
 only the chainID is required.
 
+When /abci_query is called, Cosmos SDK multistore Merkle key path format is used:
+
+	/{store name}/{key}
+
+You may have a different format. Unfortunately, it can't be changed right now. Please consider forking the CLI.
 `,
 	RunE: runProxy,
 	Args: cobra.ExactArgs(1),
