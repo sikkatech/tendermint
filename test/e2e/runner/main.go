@@ -199,7 +199,7 @@ func (cli *CLI) Start() error {
 		if err := cli.runDocker("up", "-d", node.Name); err != nil {
 			return err
 		}
-		if err := node.WaitFor(0, 10*time.Second); err != nil {
+		if _, err := node.WaitFor(0, 10*time.Second); err != nil {
 			return err
 		}
 		logger.Info(fmt.Sprintf("Node %v up on http://127.0.0.1:%v", node.Name, node.ProxyPort))
@@ -208,26 +208,42 @@ func (cli *CLI) Start() error {
 		return fmt.Errorf("no nodes to start")
 	}
 
-	// Wait for height 1
+	// Wait for initial height
 	logger.Info(fmt.Sprintf("Waiting for initial height %v...", cli.testnet.InitialHeight))
-	if err := mainNode.WaitFor(cli.testnet.InitialHeight, 20*time.Second); err != nil {
+	_, err := mainNode.WaitFor(cli.testnet.InitialHeight, 20*time.Second)
+	if err != nil {
 		return err
+	}
+
+	// Fetch the latest block and update any state sync nodes with the trusted height and hash.
+	lastBlock, err := mainNode.LastBlock()
+	if err != nil {
+		return err
+	}
+	for _, node := range nodeQueue {
+		if node.StateSync {
+			err = UpdateConfigStateSync(cli.dir, node, lastBlock.Block.Height, lastBlock.BlockID.Hash.Bytes())
+			if err != nil {
+				return err
+			}
+		}
 	}
 
 	// Start up remaining nodes
 	for _, node := range nodeQueue {
 		logger.Info(fmt.Sprintf("Waiting for height %v to start node %v...", node.StartAt, node.Name))
-		if err := mainNode.WaitFor(node.StartAt, 1*time.Minute); err != nil {
+		if _, err := mainNode.WaitFor(node.StartAt, 1*time.Minute); err != nil {
 			return err
 		}
 		if err := cli.runDocker("up", "-d", node.Name); err != nil {
 			return err
 		}
-		if err := node.WaitFor(node.StartAt, 1*time.Minute); err != nil {
+		status, err := node.WaitFor(node.StartAt, 1*time.Minute)
+		if err != nil {
 			return err
 		}
 		logger.Info(fmt.Sprintf("Node %v up on http://127.0.0.1:%v at height %v",
-			node.Name, node.ProxyPort, node.StartAt))
+			node.Name, node.ProxyPort, status.SyncInfo.LatestBlockHeight))
 	}
 
 	return nil

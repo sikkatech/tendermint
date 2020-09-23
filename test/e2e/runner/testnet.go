@@ -13,6 +13,7 @@ import (
 	"github.com/tendermint/tendermint/crypto/ed25519"
 	rpc "github.com/tendermint/tendermint/rpc/client"
 	rpchttp "github.com/tendermint/tendermint/rpc/client/http"
+	rpctypes "github.com/tendermint/tendermint/rpc/core/types"
 )
 
 var (
@@ -52,6 +53,7 @@ type Node struct {
 	ProxyPort       uint32
 	StartAt         uint64
 	FastSync        string
+	StateSync       bool
 	Database        string
 	ABCIProtocol    string
 	PrivvalProtocol string
@@ -146,6 +148,7 @@ func NewNode(name string, ip net.IP, proxyPort uint32, nodeManifest ManifestNode
 		Mode:            "validator",
 		StartAt:         nodeManifest.StartAt,
 		FastSync:        nodeManifest.FastSync,
+		StateSync:       nodeManifest.StateSync,
 		Database:        "goleveldb",
 		ABCIProtocol:    "unix",
 		PrivvalProtocol: "file",
@@ -244,6 +247,9 @@ func (n Node) Validate(testnet Testnet) error {
 		return fmt.Errorf("invalid privval protocol setting %q", n.PrivvalProtocol)
 	}
 
+	if n.StateSync && n.StartAt == 0 {
+		return errors.New("state synced nodes cannot start at the initial height")
+	}
 	if n.PersistInterval == 0 && n.RetainBlocks > 0 {
 		return errors.New("persist_interval=0 requires retain_blocks=0")
 	}
@@ -278,6 +284,16 @@ func (n Node) Address() string {
 	return fmt.Sprintf("%v:26656", ip)
 }
 
+// Address returns an RPC endpoint address for the node.
+func (n Node) AddressRPC() string {
+	ip := n.IP.String()
+	if n.IP.To4() == nil {
+		// IPv6 addresses must be wrapped in [] to avoid conflict with : port separator
+		ip = fmt.Sprintf("[%v]", ip)
+	}
+	return fmt.Sprintf("%v:26657", ip)
+}
+
 // Address returns a P2P endpoint address for the node, including the node ID.
 func (n Node) AddressWithID() string {
 	return fmt.Sprintf("%x@%v", n.Key.PubKey().Address().Bytes(), n.Address())
@@ -288,18 +304,27 @@ func (n Node) Client() (rpc.Client, error) {
 	return rpchttp.New(fmt.Sprintf("http://127.0.0.1:%v", n.ProxyPort), "/websocket")
 }
 
-// WaitFor waits for the node to become available and catch up to the given block height.
-func (n Node) WaitFor(height uint64, timeout time.Duration) error {
+// LastBlock fetches the last block.
+func (n Node) LastBlock() (*rpctypes.ResultBlock, error) {
 	client, err := n.Client()
 	if err != nil {
-		return err
+		return nil, err
+	}
+	return client.Block(context.Background(), nil)
+}
+
+// WaitFor waits for the node to become available and catch up to the given block height.
+func (n Node) WaitFor(height uint64, timeout time.Duration) (*rpctypes.ResultStatus, error) {
+	client, err := n.Client()
+	if err != nil {
+		return nil, err
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	for {
 		status, err := client.Status(ctx)
 		if err == nil && status.SyncInfo.LatestBlockHeight >= int64(height) {
-			return nil
+			return status, nil
 		}
 		time.Sleep(200 * time.Millisecond)
 	}

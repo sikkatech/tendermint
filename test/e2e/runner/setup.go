@@ -5,10 +5,12 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"regexp"
 	"text/template"
 	"time"
 
@@ -215,6 +217,26 @@ func MakeConfig(testnet *Testnet, node *Node) (*config.Config, error) {
 		cfg.FastSync.Version = node.FastSync
 	}
 
+	if node.StateSync {
+		cfg.StateSync.Enable = true
+		cfg.StateSync.RPCServers = []string{}
+		for _, peer := range testnet.Nodes {
+			switch {
+			case peer.Name == node.Name:
+				continue
+			case peer.StartAt > 0:
+				continue
+			case peer.RetainBlocks > 0:
+				continue
+			default:
+				cfg.StateSync.RPCServers = append(cfg.StateSync.RPCServers, peer.AddressRPC())
+			}
+		}
+		if len(cfg.StateSync.RPCServers) < 2 {
+			return nil, errors.New("unable to find 2 suitable state sync RPC servers")
+		}
+	}
+
 	cfg.P2P.Seeds = ""
 	for _, seed := range node.Seeds {
 		if len(cfg.P2P.Seeds) > 0 {
@@ -290,4 +312,19 @@ func MakeAppConfig(testnet *Testnet, node *Node) ([]byte, error) {
 // MakeNodeKey generates a node key.
 func MakeNodeKey(node *Node) *p2p.NodeKey {
 	return &p2p.NodeKey{PrivKey: node.Key}
+}
+
+// UpdateConfigStateSync updates the state sync config for a node.
+func UpdateConfigStateSync(dir string, node *Node, height int64, hash []byte) error {
+	cfgPath := filepath.Join(dir, node.Name, "config", "config.toml")
+
+	// FIXME Apparently there's no function to simply load a config file without
+	// involving the entire Viper apparatus, so we'll just resort to regexps.
+	bz, err := ioutil.ReadFile(cfgPath)
+	if err != nil {
+		return err
+	}
+	bz = regexp.MustCompile(`(?m)^trust_height =.*`).ReplaceAll(bz, []byte(fmt.Sprintf(`trust_height = %v`, height)))
+	bz = regexp.MustCompile(`(?m)^trust_hash =.*`).ReplaceAll(bz, []byte(fmt.Sprintf(`trust_hash = "%X"`, hash)))
+	return ioutil.WriteFile(cfgPath, bz, 0644)
 }

@@ -23,6 +23,7 @@ type ManifestNode struct {
 	Mode            string
 	StartAt         uint64 `toml:"start_at"`
 	FastSync        string `toml:"fast_sync"`
+	StateSync       bool   `toml:"state_sync"`
 	Database        string
 	ABCIProtocol    string  `toml:"abci_protocol"`
 	PersistInterval *uint64 `toml:"persist_interval"`

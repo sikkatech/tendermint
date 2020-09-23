@@ -57,6 +57,7 @@ persistent_peers = ["validator01", "validator02", "validator03"]
 
 [node.full01]
 mode = "full"
-start_at = 1012
+start_at = 1020
 fast_sync = "v2"
+state_sync = true
 persistent_peers = ["validator01", "validator02", "validator03"]
