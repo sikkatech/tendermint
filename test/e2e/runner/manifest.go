@@ -11,7 +11,7 @@ import (
 // Manifest represents a testnet manifest, specified as TOML.
 type Manifest struct {
 	Name             string
-	IP               string
+	IPv6             bool                        `toml:"ipv6"`
 	InitialHeight    uint64                      `toml:"initial_height"`
 	InitialState     map[string]string           `toml:"initial_state"`
 	ValidatorUpdates map[string]map[string]uint8 `toml:"validator_update"`
@@ -20,8 +20,6 @@ type Manifest struct {
 
 // ManifestNode represents a testnet manifest node.
 type ManifestNode struct {
-	IP              string
-	ProxyPort       uint32
 	StartAt         uint64 `toml:"start_at"`
 	FastSync        string `toml:"fast_sync"`
 	Database        string

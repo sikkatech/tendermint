@@ -7,7 +7,6 @@ import (
 	"net"
 	"sort"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/tendermint/tendermint/crypto"
@@ -15,6 +14,24 @@ import (
 	rpc "github.com/tendermint/tendermint/rpc/client"
 	rpchttp "github.com/tendermint/tendermint/rpc/client/http"
 )
+
+var (
+	ip4network     *net.IPNet
+	ip6network     *net.IPNet
+	proxyPortFirst uint32 = 5701
+)
+
+func init() {
+	var err error
+	_, ip4network, err = net.ParseCIDR("10.200.0.0/16")
+	if err != nil {
+		panic(err)
+	}
+	_, ip6network, err = net.ParseCIDR("fd80:b10c::/48")
+	if err != nil {
+		panic(err)
+	}
+}
 
 // Testnet represents a single testnet
 type Testnet struct {
@@ -44,33 +61,38 @@ type Node struct {
 
 // NewTestnet creates a testnet from a manifest.
 func NewTestnet(manifest Manifest) (*Testnet, error) {
-	_, ipNet, err := net.ParseCIDR(manifest.IP)
-	if err != nil {
-		return nil, fmt.Errorf("invalid network IP %q: %w", manifest.IP, err)
-	}
-	initialHeight := uint64(1)
-	if manifest.InitialHeight > 0 {
-		initialHeight = manifest.InitialHeight
-	}
 	testnet := &Testnet{
 		Name:             manifest.Name,
-		IP:               ipNet,
-		InitialHeight:    initialHeight,
+		IP:               ip4network,
+		InitialHeight:    1,
 		InitialState:     manifest.InitialState,
 		ValidatorUpdates: map[uint64]map[string]uint8{},
 		Nodes:            []*Node{},
 	}
+	if manifest.InitialHeight > 0 {
+		testnet.InitialHeight = manifest.InitialHeight
+	}
+	if manifest.IPv6 {
+		testnet.IP = ip6network
+	}
 
-	for name, nodeManifest := range manifest.Nodes {
-		node, err := NewNode(name, nodeManifest)
+	ip := nextIP(nextIP(testnet.IP.IP)) // increment twice to skip gateway address
+	proxyPort := proxyPortFirst
+	nodeNames := []string{}
+	for name := range manifest.Nodes {
+		nodeNames = append(nodeNames, name)
+	}
+	sort.Strings(nodeNames)
+	for _, name := range nodeNames {
+		nodeManifest := manifest.Nodes[name]
+		node, err := NewNode(name, ip, proxyPort, nodeManifest)
 		if err != nil {
 			return nil, err
 		}
 		testnet.Nodes = append(testnet.Nodes, node)
+		ip = nextIP(ip)
+		proxyPort++
 	}
-	sort.Slice(testnet.Nodes, func(i, j int) bool {
-		return strings.Compare(testnet.Nodes[i].Name, testnet.Nodes[j].Name) == -1
-	})
 
 	// We do a second pass to set up persistent peers, which allows graph cycles.
 	for _, node := range testnet.Nodes {
@@ -106,12 +128,12 @@ func NewTestnet(manifest Manifest) (*Testnet, error) {
 }
 
 // NewNode creates a new testnet node from a node manifest.
-func NewNode(name string, nodeManifest ManifestNode) (*Node, error) {
+func NewNode(name string, ip net.IP, proxyPort uint32, nodeManifest ManifestNode) (*Node, error) {
 	node := &Node{
 		Name:            name,
 		Key:             ed25519.GenPrivKey(),
-		IP:              net.ParseIP(nodeManifest.IP),
-		ProxyPort:       nodeManifest.ProxyPort,
+		IP:              ip,
+		ProxyPort:       proxyPort,
 		StartAt:         nodeManifest.StartAt,
 		FastSync:        nodeManifest.FastSync,
 		Database:        "goleveldb",
@@ -119,9 +141,6 @@ func NewNode(name string, nodeManifest ManifestNode) (*Node, error) {
 		PrivvalProtocol: "file",
 		PersistInterval: 1,
 		RetainBlocks:    nodeManifest.RetainBlocks,
-	}
-	if node.IP == nil { // This is how net.ParseIP signals errors
-		return nil, fmt.Errorf("invalid IP %q for node %q", nodeManifest.IP, name)
 	}
 	if nodeManifest.Database != "" {
 		node.Database = nodeManifest.Database
@@ -226,8 +245,8 @@ func (t Testnet) LookupNode(name string) *Node {
 	return nil
 }
 
-// IsIPv6 returns true if the testnet is an IPv6 network.
-func (t Testnet) IsIPv6() bool {
+// IPv6 returns true if the testnet is an IPv6 network.
+func (t Testnet) IPv6() bool {
 	return t.IP.IP.To4() == nil
 }
 
@@ -251,4 +270,17 @@ func (n Node) WaitFor(height uint64, timeout time.Duration) error {
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
+}
+
+// nextIP increments the IP address and returns it
+func nextIP(ip net.IP) net.IP {
+	next := make([]byte, len(ip))
+	copy(next, ip)
+	for i := len(next) - 1; i >= 0; i-- {
+		next[i]++
+		if next[i] != 0 {
+			break
+		}
+	}
+	return next
 }

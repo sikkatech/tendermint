@@ -95,7 +95,7 @@ func MakeDockerCompose(testnet *Testnet) ([]byte, error) {
 networks:
   {{ .Name }}:
     driver: bridge
-{{- if .IsIPv6 }}
+{{- if .IPv6 }}
     enable_ipv6: true
 {{- end }}
     ipam:
@@ -116,7 +116,7 @@ services:
     - ./{{ .Name }}:/tendermint
     networks:
       {{ $.Name }}:
-        ipv{{ if $.IsIPv6 }}6{{ else }}4{{ end}}_address: {{ .IP }}
+        ipv{{ if $.IPv6 }}6{{ else }}4{{ end}}_address: {{ .IP }}
 
 {{end}}`)
 	if err != nil {

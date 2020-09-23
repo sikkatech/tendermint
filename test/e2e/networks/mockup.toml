@@ -1,7 +1,7 @@
 name = "mockup"
-ip = "10.200.0.0/16"
 initial_height = 1000
 initial_state = { foo = "bar" }
+ipv6 = false
 
 [validator_update.0]
 validator01 = 1
@@ -20,15 +20,11 @@ validator03 = 20
 validator04 = 10
 
 [node.validator01]
-ip = "10.200.0.2"
-proxyport = 5701
 database = "goleveldb"
 retain_blocks = 1
 persistent_peers = ["validator02", "validator03", "validator04"]
 
 [node.validator02]
-ip = "10.200.0.3"
-proxyport = 5702
 database = "boltdb"
 abci_protocol = "tcp"
 privval_protocol = "tcp"
@@ -37,8 +33,6 @@ retain_blocks = 3
 persistent_peers = ["validator01", "validator03", "validator04"]
 
 [node.validator03]
-ip = "10.200.0.4"
-proxyport = 5703
 database = "badgerdb"
 abci_protocol = "unix"
 privval_protocol = "unix"
@@ -46,8 +40,6 @@ persist_interval = 0
 persistent_peers = ["validator01", "validator02", "validator04"]
 
 [node.validator04]
-ip = "10.200.0.5"
-proxyport = 5704
 database = "rocksdb"
 start_at = 1010
 fast_sync = "v2"

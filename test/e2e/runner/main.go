@@ -250,8 +250,8 @@ func (cli *CLI) Cleanup() error {
 		return err
 	}
 
-	logger.Info("Removing Docker containers")
-	err = cli.runDocker("rm", "--stop", "--force")
+	logger.Info("Removing Docker containers and networks")
+	err = cli.runDocker("down")
 	if err != nil {
 		return err
 	}
