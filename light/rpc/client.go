@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"regexp"
 	"time"
 
 	"github.com/gogo/protobuf/proto"
@@ -22,11 +21,14 @@ import (
 
 var errNegOrZeroHeight = errors.New("negative or zero height")
 
+// KeyPathFunc builds a merkle path out of the given path and key.
+type KeyPathFunc func(path string, key []byte) (merkle.KeyPath, error)
+
 // LightClient is an interface that contains functionality needed by Client from the light client.
 type LightClient interface {
 	ChainID() string
 	VerifyLightBlockAtHeight(ctx context.Context, height int64, now time.Time) (*types.LightBlock, error)
-	TrustedLightBlock(height int64) *types.LightBlock
+	TrustedLightBlock(height int64) (*types.LightBlock, error)
 }
 
 // Client is an RPC client, which uses light#Client to verify data (if it can
@@ -38,8 +40,8 @@ type Client struct {
 	next rpcclient.Client
 	lc   LightClient
 	// Proof runtime used to verify values returned by ABCIQuery
-	prt             *merkle.ProofRuntime
-	storeNameRegexp *regexp.Regexp
+	prt       *merkle.ProofRuntime
+	keyPathFn KeyPathFunc
 }
 
 var _ rpcclient.Client = (*Client)(nil)
@@ -47,15 +49,17 @@ var _ rpcclient.Client = (*Client)(nil)
 // Option allow you to tweak Client.
 type Option func(*Client)
 
-// StoreNameRegexp is a regular expression for extracting store from ABCIQuery path.
-func StoreNameRegexp(re *regexp.Regexp) Option {
+// KeyPathFn option can be used to set a function, which parses a given path
+// and builds the merkle path for the prover. It must be provided if you want
+// to call ABCIQuery or ABCIQueryWithOptions.
+func KeyPathFn(fn KeyPathFunc) Option {
 	return func(c *Client) {
-		c.storeNameRegexp = re
+		c.keyPathFn = fn
 	}
 }
 
 // NewClient returns a new client.
-func NewClient(next rpcclient.Client, lc LightClient, opts []Option) *Client {
+func NewClient(next rpcclient.Client, lc LightClient, opts ...Option) *Client {
 	c := &Client{
 		next: next,
 		lc:   lc,
@@ -131,19 +135,14 @@ func (c *Client) ABCIQueryWithOptions(ctx context.Context, path string, data tmb
 	// Validate the value proof against the trusted header.
 	if resp.Value != nil {
 		// 1) extract store name from path using regexp
-		if c.storeNameRegexp == nil {
-			return nil, errors.New("please configure Client with StoreNameRegexp option")
+		if c.keyPathFn == nil {
+			return nil, errors.New("please configure Client with KeyPathFn option")
 		}
-		matches := c.storeNameRegexp.FindStringSubmatch(path)
-		if len(matches) != 1 {
-			return nil, fmt.Errorf("can't find store name in %s using %v", path, c.storeNameRegexp)
-		}
-		storeName := matches[0]
 
-		// 2) build a key path
-		kp := merkle.KeyPath{}
-		kp = kp.AppendKey([]byte(storeName), merkle.KeyEncodingURL)
-		kp = kp.AppendKey(resp.Key, merkle.KeyEncodingURL)
+		kp, err := c.keyPathFn(path, resp.Key)
+		if err != nil {
+			return nil, fmt.Errorf("can't build merkle key path: %w", err)
+		}
 
 		// 3) verify value
 		err = c.prt.VerifyValue(resp.ProofOps, l.AppHash, kp.String(), resp.Value)

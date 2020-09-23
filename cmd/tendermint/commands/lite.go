@@ -15,6 +15,7 @@ import (
 
 	dbm "github.com/tendermint/tm-db"
 
+	"github.com/tendermint/tendermint/crypto/merkle"
 	"github.com/tendermint/tendermint/libs/log"
 	tmmath "github.com/tendermint/tendermint/libs/math"
 	tmos "github.com/tendermint/tendermint/libs/os"
@@ -199,15 +200,10 @@ func runProxy(cmd *cobra.Command, args []string) error {
 		cfg.WriteTimeout = config.RPC.TimeoutBroadcastTxCommit + 1*time.Second
 	}
 
-	str, err := regexp.Compile(storeNameRegexp)
-	if err != nil {
-		return fmt.Errorf("can't compile store-name-regexp: %w", err)
-	}
-
 	p := lproxy.Proxy{
 		Addr:   listenAddr,
 		Config: cfg,
-		Client: lrpc.NewClient(rpcClient, c, lrpc.StoreNameRegexp(str)),
+		Client: lrpc.NewClient(rpcClient, c, lrpc.KeyPathFn(cosmosSDKMerkleKeyPathFn())),
 		Logger: logger,
 	}
 	// Stop upon receiving SIGTERM or CTRL-C.
@@ -247,4 +243,24 @@ func saveProviders(db dbm.DB, primaryAddr, witnessesAddrs string) error {
 		return fmt.Errorf("failed to save witness providers: %w", err)
 	}
 	return nil
+}
+
+func cosmosSDKMerkleKeyPathFn() lrpc.KeyPathFunc {
+	str, err := regexp.Compile(storeNameRegexp)
+	if err != nil {
+		panic(err)
+	}
+
+	return func(path string, key []byte) (merkle.KeyPath, error) {
+		matches := str.FindStringSubmatch(path)
+		if len(matches) != 1 {
+			return nil, fmt.Errorf("can't find store name in %s using %v", path, str)
+		}
+		storeName := matches[0]
+
+		kp := merkle.KeyPath{}
+		kp = kp.AppendKey([]byte(storeName), merkle.KeyEncodingURL)
+		kp = kp.AppendKey(key, merkle.KeyEncodingURL)
+		return kp, nil
+	}
 }
