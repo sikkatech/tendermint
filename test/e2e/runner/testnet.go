@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -225,13 +226,10 @@ func (n Node) WaitFor(height uint64, timeout time.Duration) error {
 	if err != nil {
 		return err
 	}
-	started := time.Now()
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
 	for {
-		// FIXME This should use a context, but needs context support in RPC
-		if time.Since(started) >= timeout {
-			return fmt.Errorf("timeout after %v", timeout)
-		}
-		status, err := client.Status()
+		status, err := client.Status(ctx)
 		if err == nil && status.SyncInfo.LatestBlockHeight >= int64(height) {
 			return nil
 		}
