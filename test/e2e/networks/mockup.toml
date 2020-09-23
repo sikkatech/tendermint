@@ -54,3 +54,9 @@ start_at = 1010
 fast_sync = "v2"
 abci_protocol = "grpc"
 persistent_peers = ["validator01", "validator02", "validator03"]
+
+[node.full01]
+mode = "full"
+start_at = 1012
+fast_sync = "v2"
+persistent_peers = ["validator01", "validator02", "validator03"]

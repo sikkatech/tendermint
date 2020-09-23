@@ -179,34 +179,32 @@ func MakeConfig(testnet *Testnet, node *Node) (*config.Config, error) {
 		return nil, fmt.Errorf("unexpected ABCI protocol setting %q", node.ABCIProtocol)
 	}
 
+	// Tendermint errors if it does not have a privval key set up, regardless of whether
+	// it's actually needed (e.g. for remote KMS or non-validators). We set up a dummy
+	// key here by default, and use the real key for actual validators that should use
+	// the file privval.
+	cfg.PrivValidatorListenAddr = ""
+	cfg.PrivValidatorKey = "config/dummy_validator_key.json"
+	cfg.PrivValidatorState = "config/dummy_validator_key.json"
+
 	switch node.Mode {
 	case "validator":
-		// We have to set the key- and state-files regardless of whether they're actually used.
 		switch node.PrivvalProtocol {
 		case "file":
 			cfg.PrivValidatorKey = "config/priv_validator_key.json"
 			cfg.PrivValidatorState = "config/priv_validator_key.json"
-			cfg.PrivValidatorListenAddr = ""
 		case "unix":
 			cfg.PrivValidatorListenAddr = "unix:///var/run/privval.sock"
-			// Errors if not given, so pass a dummy key to make sure the remote is actually used.
-			cfg.PrivValidatorKey = "config/dummy_validator_key.json"
-			cfg.PrivValidatorState = "config/dummy_validator_key.json"
 		case "tcp":
 			cfg.PrivValidatorListenAddr = "tcp://0.0.0.0:27559"
-			// Errors if not given, so pass a dummy key to make sure the remote is actually used.
-			cfg.PrivValidatorKey = "config/dummy_validator_key.json"
-			cfg.PrivValidatorState = "config/dummy_validator_key.json"
 		default:
 			return nil, fmt.Errorf("invalid privval protocol setting %q", node.PrivvalProtocol)
 		}
 	case "seed":
-		// Errors if not given, so pass a dummy key.
-		cfg.PrivValidatorKey = "config/dummy_validator_key.json"
-		cfg.PrivValidatorState = "config/dummy_validator_key.json"
-		cfg.PrivValidatorListenAddr = ""
 		cfg.P2P.SeedMode = true
 		cfg.P2P.PexReactor = true
+	case "full":
+		// Don't need to do anything, since we're using a dummy privval key by default.
 	default:
 		return nil, fmt.Errorf("unexpected mode %q", node.Mode)
 	}

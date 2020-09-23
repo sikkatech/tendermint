@@ -219,7 +219,7 @@ func (n Node) Validate(testnet Testnet) error {
 		}
 	}
 	switch n.Mode {
-	case "validator", "seed":
+	case "validator", "seed", "full":
 	default:
 		return fmt.Errorf("invalid mode %q", n.Mode)
 	}
