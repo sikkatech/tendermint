@@ -12,8 +12,9 @@ type Config struct {
 	ChainID          string `toml:"chain_id"`
 	Listen           string
 	GRPC             bool `toml:"grpc"`
-	File             string
+	Dir              string
 	PersistInterval  uint64                      `toml:"persist_interval"`
+	SnapshotInterval uint64                      `toml:"snapshot_interval"`
 	RetainBlocks     uint64                      `toml:"retain_blocks"`
 	ValidatorUpdates map[string]map[string]uint8 `toml:"validator_update"`
 	PrivValServer    string                      `toml:"privval_server"`
@@ -39,15 +40,13 @@ func LoadConfig(file string) (*Config, error) {
 }
 
 func (cfg Config) Validate() error {
+	// We don't do exhaustive config validation here, instead relying on Testnet.Validate()
+	// to handle it.
 	switch {
 	case cfg.ChainID == "":
 		return errors.New("chain_id parameter is required")
 	case cfg.Listen == "":
 		return errors.New("listen parameter is required")
-	case cfg.PersistInterval == 0 && cfg.RetainBlocks > 0:
-		return errors.New("persist_interval=0 requires retain_blocks=0")
-	case cfg.PersistInterval > 1 && cfg.RetainBlocks > 0 && cfg.RetainBlocks < cfg.PersistInterval:
-		return errors.New("persist_interval must be less than or equal to retain_blocks")
 	default:
 		return nil
 	}

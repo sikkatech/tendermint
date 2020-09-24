@@ -46,21 +46,22 @@ type Testnet struct {
 
 // Node represents a Tendermint node in a testnet
 type Node struct {
-	Name            string
-	Mode            string
-	Key             crypto.PrivKey
-	IP              net.IP
-	ProxyPort       uint32
-	StartAt         uint64
-	FastSync        string
-	StateSync       bool
-	Database        string
-	ABCIProtocol    string
-	PrivvalProtocol string
-	PersistInterval uint64
-	RetainBlocks    uint64
-	Seeds           []*Node
-	PersistentPeers []*Node
+	Name             string
+	Mode             string
+	Key              crypto.PrivKey
+	IP               net.IP
+	ProxyPort        uint32
+	StartAt          uint64
+	FastSync         string
+	StateSync        bool
+	Database         string
+	ABCIProtocol     string
+	PrivvalProtocol  string
+	PersistInterval  uint64
+	SnapshotInterval uint64
+	RetainBlocks     uint64
+	Seeds            []*Node
+	PersistentPeers  []*Node
 }
 
 // NewTestnet creates a testnet from a manifest.
@@ -141,19 +142,20 @@ func NewTestnet(manifest Manifest) (*Testnet, error) {
 // NewNode creates a new testnet node from a node manifest.
 func NewNode(name string, ip net.IP, proxyPort uint32, nodeManifest ManifestNode) (*Node, error) {
 	node := &Node{
-		Name:            name,
-		Key:             ed25519.GenPrivKey(),
-		IP:              ip,
-		ProxyPort:       proxyPort,
-		Mode:            "validator",
-		StartAt:         nodeManifest.StartAt,
-		FastSync:        nodeManifest.FastSync,
-		StateSync:       nodeManifest.StateSync,
-		Database:        "goleveldb",
-		ABCIProtocol:    "unix",
-		PrivvalProtocol: "file",
-		PersistInterval: 1,
-		RetainBlocks:    nodeManifest.RetainBlocks,
+		Name:             name,
+		Key:              ed25519.GenPrivKey(),
+		IP:               ip,
+		ProxyPort:        proxyPort,
+		Mode:             "validator",
+		StartAt:          nodeManifest.StartAt,
+		FastSync:         nodeManifest.FastSync,
+		StateSync:        nodeManifest.StateSync,
+		Database:         "goleveldb",
+		ABCIProtocol:     "unix",
+		PrivvalProtocol:  "file",
+		PersistInterval:  1,
+		SnapshotInterval: nodeManifest.SnapshotInterval,
+		RetainBlocks:     nodeManifest.RetainBlocks,
 	}
 	if nodeManifest.Mode != "" {
 		node.Mode = nodeManifest.Mode
@@ -255,6 +257,9 @@ func (n Node) Validate(testnet Testnet) error {
 	}
 	if n.PersistInterval > 1 && n.RetainBlocks > 0 && n.RetainBlocks < n.PersistInterval {
 		return errors.New("persist_interval must be less than or equal to retain_blocks")
+	}
+	if n.SnapshotInterval > 0 && n.RetainBlocks > 0 && n.RetainBlocks < n.SnapshotInterval {
+		return errors.New("snapshot_interval must be less than er equal to retain_blocks")
 	}
 	return nil
 }

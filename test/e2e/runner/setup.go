@@ -60,6 +60,9 @@ func Setup(testnet *Testnet, dir string) error {
 		if err := os.MkdirAll(filepath.Join(nodeDir, "data"), 0755); err != nil {
 			return err
 		}
+		if err := os.MkdirAll(filepath.Join(nodeDir, "data", "app"), 0755); err != nil {
+			return err
+		}
 		if err := genesis.SaveAs(filepath.Join(nodeDir, "config", "genesis.json")); err != nil {
 			return err
 		}
@@ -257,12 +260,13 @@ func MakeConfig(testnet *Testnet, node *Node) (*config.Config, error) {
 // MakeAppConfig generates an ABCI application config for a node.
 func MakeAppConfig(testnet *Testnet, node *Node) ([]byte, error) {
 	cfg := map[string]interface{}{
-		"chain_id":         testnet.Name,
-		"file":             "data/appstate.json",
-		"persist_interval": node.PersistInterval,
-		"listen":           "unix:///var/run/app.sock",
-		"grpc":             false,
-		"retain_blocks":    node.RetainBlocks,
+		"chain_id":          testnet.Name,
+		"dir":               "data/app",
+		"listen":            "unix:///var/run/app.sock",
+		"grpc":              false,
+		"persist_interval":  node.PersistInterval,
+		"snapshot_interval": node.SnapshotInterval,
+		"retain_blocks":     node.RetainBlocks,
 	}
 	switch node.ABCIProtocol {
 	case "unix":

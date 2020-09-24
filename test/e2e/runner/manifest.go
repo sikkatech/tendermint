@@ -20,17 +20,18 @@ type Manifest struct {
 
 // ManifestNode represents a testnet manifest node.
 type ManifestNode struct {
-	Mode            string
-	StartAt         uint64 `toml:"start_at"`
-	FastSync        string `toml:"fast_sync"`
-	StateSync       bool   `toml:"state_sync"`
-	Database        string
-	ABCIProtocol    string  `toml:"abci_protocol"`
-	PersistInterval *uint64 `toml:"persist_interval"`
-	RetainBlocks    uint64  `toml:"retain_blocks"`
-	PrivvalProtocol string  `toml:"privval_protocol"`
-	Seeds           []string
-	PersistentPeers []string `toml:"persistent_peers"`
+	Mode             string
+	StartAt          uint64 `toml:"start_at"`
+	FastSync         string `toml:"fast_sync"`
+	StateSync        bool   `toml:"state_sync"`
+	Database         string
+	ABCIProtocol     string  `toml:"abci_protocol"`
+	PersistInterval  *uint64 `toml:"persist_interval"`
+	SnapshotInterval uint64  `toml:"snapshot_interval"`
+	RetainBlocks     uint64  `toml:"retain_blocks"`
+	PrivvalProtocol  string  `toml:"privval_protocol"`
+	Seeds            []string
+	PersistentPeers  []string `toml:"persistent_peers"`
 }
 
 // ParseManifest parses a testnet manifest from TOML.
