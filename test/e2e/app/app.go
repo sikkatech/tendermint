@@ -57,7 +57,8 @@ func (app *Application) Info(req abci.RequestInfo) abci.ResponseInfo {
 
 func (app *Application) InitChain(req abci.RequestInitChain) abci.ResponseInitChain {
 	var err error
-	app.state.Requests.InitChain = req
+	app.state.initialHeight = uint64(req.InitialHeight)
+	//app.state.Requests.InitChain = req
 	if len(req.AppStateBytes) > 0 {
 		err = app.state.Import(0, req.AppStateBytes)
 		if err != nil {
@@ -74,7 +75,7 @@ func (app *Application) InitChain(req abci.RequestInitChain) abci.ResponseInitCh
 }
 
 func (app *Application) CheckTx(req abci.RequestCheckTx) abci.ResponseCheckTx {
-	app.state.Requests.CheckTx = append(app.state.Requests.CheckTx, req)
+	//app.state.Requests.CheckTx = append(app.state.Requests.CheckTx, req)
 	_, _, err := parseTx(req.Tx)
 	if err != nil {
 		return abci.ResponseCheckTx{
@@ -86,7 +87,7 @@ func (app *Application) CheckTx(req abci.RequestCheckTx) abci.ResponseCheckTx {
 }
 
 func (app *Application) DeliverTx(req abci.RequestDeliverTx) abci.ResponseDeliverTx {
-	app.state.Requests.DeliverTx = append(app.state.Requests.DeliverTx, req)
+	//app.state.Requests.DeliverTx = append(app.state.Requests.DeliverTx, req)
 	key, value, err := parseTx(req.Tx)
 	if err != nil {
 		panic(err) // shouldn't happen since we verified it in CheckTx

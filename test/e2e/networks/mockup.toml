@@ -49,16 +49,13 @@ seeds = ["seed01", "seed02"]
 
 [node.validator04]
 database = "rocksdb"
-start_at = 1010
-fast_sync = "v2"
 abci_protocol = "grpc"
 persist_interval = 3
 retain_blocks = 3
 persistent_peers = ["validator01", "validator02", "validator03"]
+perturb = ["restart", "kill", "disconnect", "pause"]
 
 [node.full01]
 mode = "full"
-start_at = 1020
-fast_sync = "v2"
-state_sync = true
-persistent_peers = ["validator01", "validator02", "validator03"]
+start_at = 1005
+persistent_peers = ["validator01", "validator02", "validator03", "validator04"]

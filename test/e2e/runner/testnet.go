@@ -62,6 +62,7 @@ type Node struct {
 	RetainBlocks     uint64
 	Seeds            []*Node
 	PersistentPeers  []*Node
+	Perturb          []string
 }
 
 // NewTestnet creates a testnet from a manifest.
@@ -156,6 +157,7 @@ func NewNode(name string, ip net.IP, proxyPort uint32, nodeManifest ManifestNode
 		PersistInterval:  1,
 		SnapshotInterval: nodeManifest.SnapshotInterval,
 		RetainBlocks:     nodeManifest.RetainBlocks,
+		Perturb:          nodeManifest.Perturb,
 	}
 	if nodeManifest.Mode != "" {
 		node.Mode = nodeManifest.Mode
@@ -260,6 +262,14 @@ func (n Node) Validate(testnet Testnet) error {
 	}
 	if n.SnapshotInterval > 0 && n.RetainBlocks > 0 && n.RetainBlocks < n.SnapshotInterval {
 		return errors.New("snapshot_interval must be less than er equal to retain_blocks")
+	}
+
+	for _, perturbation := range n.Perturb {
+		switch perturbation {
+		case "restart", "kill", "disconnect", "pause":
+		default:
+			return fmt.Errorf("invalid node perturbation %q", perturbation)
+		}
 	}
 	return nil
 }

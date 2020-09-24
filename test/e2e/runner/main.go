@@ -71,6 +71,9 @@ func NewCLI() *CLI {
 			if err := cli.Start(); err != nil {
 				return err
 			}
+			if err := cli.Perturb(); err != nil {
+				return err
+			}
 			if err := cli.Cleanup(); err != nil {
 				return err
 			}
@@ -96,6 +99,14 @@ func NewCLI() *CLI {
 		Short: "Starts the Docker testnet, waiting for nodes to become available",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return cli.Start()
+		},
+	})
+
+	cli.root.AddCommand(&cobra.Command{
+		Use:   "perturb",
+		Short: "Perturbs the Docker testnet, e.g. by restarting or disconnecting nodes",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cli.Perturb()
 		},
 	})
 
@@ -134,8 +145,8 @@ func (cli *CLI) Run() {
 	}
 }
 
-// runDocker runs a Docker Compose command.
-func (cli *CLI) runDocker(args ...string) error {
+// runCompose runs a Docker Compose command.
+func (cli *CLI) runCompose(args ...string) error {
 	args = append([]string{"-f", filepath.Join(cli.dir, "docker-compose.yml")}, args...)
 	cmd := exec.Command("docker-compose", args...)
 	out, err := cmd.CombinedOutput()
@@ -149,13 +160,27 @@ func (cli *CLI) runDocker(args ...string) error {
 	}
 }
 
-// runDocker runs a Docker Compose command and displays its output.
-func (cli *CLI) runDockerOutput(args ...string) error {
+// runCompose runs a Docker Compose command and displays its output.
+func (cli *CLI) runComposeOutput(args ...string) error {
 	args = append([]string{"-f", filepath.Join(cli.dir, "docker-compose.yml")}, args...)
 	cmd := exec.Command("docker-compose", args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
+}
+
+// runDocker runs a Docker command.
+func (cli *CLI) runDocker(args ...string) error {
+	cmd := exec.Command("docker", args...)
+	out, err := cmd.CombinedOutput()
+	switch err := err.(type) {
+	case nil:
+		return nil
+	case *exec.ExitError:
+		return fmt.Errorf("failed to run docker %q:\n%v", args, string(out))
+	default:
+		return err
+	}
 }
 
 // Setup generates the testnet configuration.
@@ -196,7 +221,7 @@ func (cli *CLI) Start() error {
 		if mainNode == nil {
 			mainNode = node
 		}
-		if err := cli.runDocker("up", "-d", node.Name); err != nil {
+		if err := cli.runCompose("up", "-d", node.Name); err != nil {
 			return err
 		}
 		if _, err := node.WaitFor(0, 10*time.Second); err != nil {
@@ -231,11 +256,11 @@ func (cli *CLI) Start() error {
 
 	// Start up remaining nodes
 	for _, node := range nodeQueue {
-		logger.Info(fmt.Sprintf("Waiting for height %v to start node %v...", node.StartAt, node.Name))
+		logger.Info(fmt.Sprintf("Starting node %v at height %v...", node.Name, node.StartAt))
 		if _, err := mainNode.WaitFor(node.StartAt, 1*time.Minute); err != nil {
 			return err
 		}
-		if err := cli.runDocker("up", "-d", node.Name); err != nil {
+		if err := cli.runCompose("up", "-d", node.Name); err != nil {
 			return err
 		}
 		status, err := node.WaitFor(node.StartAt, 1*time.Minute)
@@ -249,15 +274,66 @@ func (cli *CLI) Start() error {
 	return nil
 }
 
+// Perturbs a running testnet.
+func (cli *CLI) Perturb() error {
+	for _, node := range cli.testnet.Nodes {
+		for _, perturbation := range node.Perturb {
+			switch perturbation {
+			case "restart":
+				logger.Info(fmt.Sprintf("Restarting node %v...", node.Name))
+				if err := cli.runCompose("restart", node.Name); err != nil {
+					return err
+				}
+			case "kill":
+				logger.Info(fmt.Sprintf("Killing node %v...", node.Name))
+				if err := cli.runCompose("kill", "-s", "SIGKILL", node.Name); err != nil {
+					return err
+				}
+				if err := cli.runCompose("start", node.Name); err != nil {
+					return err
+				}
+			case "disconnect":
+				logger.Info(fmt.Sprintf("Disconnecting node %v...", node.Name))
+				if err := cli.runDocker("network", "disconnect", cli.testnet.Name+"_"+cli.testnet.Name, node.Name); err != nil {
+					return err
+				}
+				time.Sleep(5 * time.Second)
+				if err := cli.runDocker("network", "connect", cli.testnet.Name+"_"+cli.testnet.Name, node.Name); err != nil {
+					return err
+				}
+			case "pause":
+				logger.Info(fmt.Sprintf("Pausing node %v...", node.Name))
+				if err := cli.runCompose("pause", node.Name); err != nil {
+					return err
+				}
+				time.Sleep(5 * time.Second)
+				if err := cli.runCompose("unpause", node.Name); err != nil {
+					return err
+				}
+
+			default:
+				return fmt.Errorf("unexpected perturbation %q", perturbation)
+			}
+
+			status, err := node.WaitFor(0, 10*time.Second)
+			if err != nil {
+				return err
+			}
+			logger.Info(fmt.Sprintf("Node %v recovered at height %v", node.Name, status.SyncInfo.LatestBlockHeight))
+		}
+	}
+	return nil
+}
+
 // Logs outputs testnet logs.
 func (cli *CLI) Logs() error {
-	return cli.runDockerOutput("logs", "--follow")
+	return cli.runComposeOutput("logs", "--follow")
 }
 
 // Stop stops the testnet and removes the containers.
 func (cli *CLI) Stop() error {
 	logger.Info("Stopping testnet")
-	return cli.runDocker("down")
+	return cli.runCompose("down")
 }
 
 // Cleanup removes the Docker Compose containers and testnet directory.
@@ -273,7 +349,7 @@ func (cli *CLI) Cleanup() error {
 	}
 
 	logger.Info("Removing Docker containers and networks")
-	err = cli.runDocker("down")
+	err = cli.runCompose("down")
 	if err != nil {
 		return err
 	}

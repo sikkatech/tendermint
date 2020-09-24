@@ -191,14 +191,14 @@ func MakeConfig(testnet *Testnet, node *Node) (*config.Config, error) {
 	// the file privval.
 	cfg.PrivValidatorListenAddr = ""
 	cfg.PrivValidatorKey = "config/dummy_validator_key.json"
-	cfg.PrivValidatorState = "config/dummy_validator_key.json"
+	cfg.PrivValidatorState = "data/dummy_validator_state.json"
 
 	switch node.Mode {
 	case "validator":
 		switch node.PrivvalProtocol {
 		case "file":
 			cfg.PrivValidatorKey = "config/priv_validator_key.json"
-			cfg.PrivValidatorState = "config/priv_validator_key.json"
+			cfg.PrivValidatorState = "data/priv_validator_state.json"
 		case "unix":
 			cfg.PrivValidatorListenAddr = "unix:///var/run/privval.sock"
 		case "tcp":

@@ -32,6 +32,7 @@ type ManifestNode struct {
 	PrivvalProtocol  string  `toml:"privval_protocol"`
 	Seeds            []string
 	PersistentPeers  []string `toml:"persistent_peers"`
+	Perturb          []string
 }
 
 // ParseManifest parses a testnet manifest from TOML.

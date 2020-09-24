@@ -10,24 +10,24 @@ import (
 	"os"
 	"sort"
 	"sync"
-
-	abci "github.com/tendermint/tendermint/abci/types"
 )
 
 // State is the application state.
 type State struct {
 	sync.RWMutex
-	Height   uint64
-	Values   map[string]string
-	Hash     []byte
-	Requests struct {
+	Height uint64
+	Values map[string]string
+	Hash   []byte
+	// Temporarily disabled due to Protobuf JSON marshalling woes
+	/*Requests struct {
 		InitChain abci.RequestInitChain
 		CheckTx   []abci.RequestCheckTx
 		DeliverTx []abci.RequestDeliverTx
-	}
+	}*/
 
 	file            string
 	persistInterval uint64
+	initialHeight   uint64
 }
 
 // NewState creates a new state.
@@ -118,8 +118,8 @@ func (s *State) Commit(flush bool) (uint64, []byte, error) {
 	switch {
 	case s.Height > 0:
 		s.Height++
-	case s.Requests.InitChain.InitialHeight > 0:
-		s.Height = uint64(s.Requests.InitChain.InitialHeight)
+	case s.initialHeight > 0:
+		s.Height = s.initialHeight
 	default:
 		s.Height = 1
 	}
