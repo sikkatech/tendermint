@@ -171,6 +171,7 @@ func MakeConfig(testnet *Testnet, node *Node) (*config.Config, error) {
 	cfg.P2P.ExternalAddress = fmt.Sprintf("tcp://%v", node.Address())
 	cfg.P2P.AddrBookStrict = false
 	cfg.DBBackend = node.Database
+	cfg.StateSync.DiscoveryTime = 5 * time.Second
 
 	switch node.ABCIProtocol {
 	case "unix":
