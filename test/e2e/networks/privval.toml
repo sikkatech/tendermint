@@ -1,0 +1,4 @@
+name = "privval"
+
+[node.validator]
+privval_protocol = "unix"
