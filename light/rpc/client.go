@@ -149,7 +149,7 @@ func (c *Client) ABCIQueryWithOptions(ctx context.Context, path string, data tmb
 		if err != nil {
 			return nil, fmt.Errorf("verify value proof: %w", err)
 		}
-	} else { // OR validate the ansence proof against the trusted header.
+	} else { // OR validate the absence proof against the trusted header.
 		err = c.prt.VerifyAbsence(resp.ProofOps, l.AppHash, string(resp.Key))
 		if err != nil {
 			return nil, fmt.Errorf("verify absence proof: %w", err)
