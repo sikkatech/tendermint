@@ -21,6 +21,26 @@ import (
 	rpctypes "github.com/tendermint/tendermint/rpc/core/types"
 )
 
+type Mode string
+type Protocol string
+type Perturbation string
+
+const (
+	ModeValidator Mode = "validator"
+	ModeFull      Mode = "full"
+	ModeSeed      Mode = "seed"
+
+	ProtocolFile Protocol = "file"
+	ProtocolGRPC Protocol = "grpc"
+	ProtocolTCP  Protocol = "tcp"
+	ProtocolUNIX Protocol = "unix"
+
+	PerturbationDisconnect Perturbation = "disconnect"
+	PerturbationKill       Perturbation = "kill"
+	PerturbationPause      Perturbation = "pause"
+	PerturbationRestart    Perturbation = "restart"
+)
+
 // Testnet represents a single testnet.
 type Testnet struct {
 	Name             string
@@ -36,7 +56,7 @@ type Testnet struct {
 // Node represents a Tendermint node in a testnet.
 type Node struct {
 	Name             string
-	Mode             string
+	Mode             Mode
 	Key              crypto.PrivKey
 	IP               net.IP
 	ProxyPort        uint32
@@ -44,14 +64,14 @@ type Node struct {
 	FastSync         string
 	StateSync        bool
 	Database         string
-	ABCIProtocol     string
-	PrivvalProtocol  string
+	ABCIProtocol     Protocol
+	PrivvalProtocol  Protocol
 	PersistInterval  uint64
 	SnapshotInterval uint64
 	RetainBlocks     uint64
 	Seeds            []*Node
 	PersistentPeers  []*Node
-	Perturb          []string
+	Perturbations    []Perturbation
 }
 
 // LoadTestnet loads a testnet from a manifest file, using the filename to
@@ -111,32 +131,35 @@ func buildTestnet(name string, dir string, manifest Manifest) (*Testnet, error) 
 			Key:              keyGen.Generate(),
 			IP:               ipGen.Next(),
 			ProxyPort:        proxyPortGen.Next(),
-			Mode:             "validator",
+			Mode:             ModeValidator,
 			StartAt:          nodeManifest.StartAt,
 			FastSync:         nodeManifest.FastSync,
 			StateSync:        nodeManifest.StateSync,
 			Database:         "goleveldb",
-			ABCIProtocol:     "unix",
-			PrivvalProtocol:  "file",
+			ABCIProtocol:     ProtocolUNIX,
+			PrivvalProtocol:  ProtocolFile,
 			PersistInterval:  1,
 			SnapshotInterval: nodeManifest.SnapshotInterval,
 			RetainBlocks:     nodeManifest.RetainBlocks,
-			Perturb:          nodeManifest.Perturb,
+			Perturbations:    []Perturbation{},
 		}
 		if nodeManifest.Mode != "" {
-			node.Mode = nodeManifest.Mode
+			node.Mode = Mode(nodeManifest.Mode)
 		}
 		if nodeManifest.Database != "" {
 			node.Database = nodeManifest.Database
 		}
 		if nodeManifest.ABCIProtocol != "" {
-			node.ABCIProtocol = nodeManifest.ABCIProtocol
+			node.ABCIProtocol = Protocol(nodeManifest.ABCIProtocol)
 		}
 		if nodeManifest.PrivvalProtocol != "" {
-			node.PrivvalProtocol = nodeManifest.PrivvalProtocol
+			node.PrivvalProtocol = Protocol(nodeManifest.PrivvalProtocol)
 		}
 		if nodeManifest.PersistInterval != nil {
 			node.PersistInterval = *nodeManifest.PersistInterval
+		}
+		for _, p := range nodeManifest.Perturb {
+			node.Perturbations = append(node.Perturbations, Perturbation(p))
 		}
 		testnet.Nodes = append(testnet.Nodes, node)
 	}
@@ -174,7 +197,7 @@ func buildTestnet(name string, dir string, manifest Manifest) (*Testnet, error) 
 		}
 	} else {
 		for _, node := range testnet.Nodes {
-			if node.Mode == "validator" {
+			if node.Mode == ModeValidator {
 				testnet.Validators[node] = 100
 			}
 		}
@@ -240,11 +263,6 @@ func (n Node) Validate(testnet Testnet) error {
 			}
 		}
 	}
-	switch n.Mode {
-	case "validator", "seed", "full":
-	default:
-		return fmt.Errorf("invalid mode %q", n.Mode)
-	}
 	switch n.FastSync {
 	case "", "v0", "v1", "v2":
 	default:
@@ -256,12 +274,12 @@ func (n Node) Validate(testnet Testnet) error {
 		return fmt.Errorf("invalid database setting %q", n.Database)
 	}
 	switch n.ABCIProtocol {
-	case "unix", "tcp", "grpc":
+	case ProtocolUNIX, ProtocolTCP, ProtocolGRPC:
 	default:
 		return fmt.Errorf("invalid ABCI protocol setting %q", n.ABCIProtocol)
 	}
 	switch n.PrivvalProtocol {
-	case "file", "unix", "tcp":
+	case ProtocolFile, ProtocolUNIX, ProtocolTCP:
 	default:
 		return fmt.Errorf("invalid privval protocol setting %q", n.PrivvalProtocol)
 	}
@@ -279,11 +297,11 @@ func (n Node) Validate(testnet Testnet) error {
 		return errors.New("snapshot_interval must be less than er equal to retain_blocks")
 	}
 
-	for _, perturbation := range n.Perturb {
+	for _, perturbation := range n.Perturbations {
 		switch perturbation {
-		case "restart", "kill", "disconnect", "pause":
+		case PerturbationDisconnect, PerturbationKill, PerturbationPause, PerturbationRestart:
 		default:
-			return fmt.Errorf("invalid node perturbation %q", perturbation)
+			return fmt.Errorf("invalid perturbation %q", perturbation)
 		}
 	}
 	return nil

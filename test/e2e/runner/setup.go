@@ -1,4 +1,4 @@
-// nolint: gosec,goconst
+// nolint: gosec
 package main
 
 import (
@@ -23,6 +23,18 @@ import (
 	"github.com/tendermint/tendermint/privval"
 	e2e "github.com/tendermint/tendermint/test/e2e/pkg"
 	"github.com/tendermint/tendermint/types"
+)
+
+const (
+	AppAddressTCP  = "tcp://127.0.0.1:30000"
+	AppAddressUNIX = "unix:///var/run/app.sock"
+
+	PrivvalAddressTCP     = "tcp://0.0.0.0:27559"
+	PrivvalAddressUNIX    = "unix:///var/run/privval.sock"
+	PrivvalKeyFile        = "config/priv_validator_key.json"
+	PrivvalStateFile      = "data/priv_validator_state.json"
+	PrivvalDummyKeyFile   = "config/priv_validator_key.json"
+	PrivvalDummyStateFile = "data/priv_validator_state.json"
 )
 
 // Setup sets up testnet configuration in a directory.
@@ -81,14 +93,14 @@ func Setup(testnet *e2e.Testnet, dir string) error {
 		}
 
 		(privval.NewFilePV(node.Key,
-			filepath.Join(nodeDir, "config", "priv_validator_key.json"),
-			filepath.Join(nodeDir, "data", "priv_validator_state.json"),
+			filepath.Join(nodeDir, PrivvalKeyFile),
+			filepath.Join(nodeDir, PrivvalStateFile),
 		)).Save()
-		// Set up a dummy validator. Tendermint requires a file PV even when configured with
-		// a remote KMS, so we just give it this dummy to make sure it actually uses the remote.
+		// Set up a dummy validator. Tendermint requires a file PV even when not used, so we
+		// give it a dummy such that it will fail if it actually tries to use it.
 		(privval.NewFilePV(ed25519.GenPrivKey(),
-			filepath.Join(nodeDir, "config", "dummy_validator_key.json"),
-			filepath.Join(nodeDir, "data", "dummy_validator_state.json"),
+			filepath.Join(nodeDir, PrivvalDummyKeyFile),
+			filepath.Join(nodeDir, PrivvalDummyStateFile),
 		)).Save()
 	}
 
@@ -173,7 +185,7 @@ func MakeGenesis(testnet *e2e.Testnet) (types.GenesisDoc, error) {
 func MakeConfig(testnet *e2e.Testnet, node *e2e.Node) (*config.Config, error) {
 	cfg := config.DefaultConfig()
 	cfg.Moniker = node.Name
-	cfg.ProxyApp = "tcp://127.0.0.1:30000"
+	cfg.ProxyApp = AppAddressTCP
 	cfg.RPC.ListenAddress = "tcp://0.0.0.0:26657"
 	cfg.P2P.ExternalAddress = fmt.Sprintf("tcp://%v", node.Address())
 	cfg.P2P.AddrBookStrict = false
@@ -181,12 +193,12 @@ func MakeConfig(testnet *e2e.Testnet, node *e2e.Node) (*config.Config, error) {
 	cfg.StateSync.DiscoveryTime = 5 * time.Second
 
 	switch node.ABCIProtocol {
-	case "unix":
-		cfg.ProxyApp = "unix:///var/run/app.sock"
-	case "tcp":
-		cfg.ProxyApp = "tcp://127.0.0.1:30000"
-	case "grpc":
-		cfg.ProxyApp = "tcp://127.0.0.1:30000"
+	case e2e.ProtocolUNIX:
+		cfg.ProxyApp = AppAddressUNIX
+	case e2e.ProtocolTCP:
+		cfg.ProxyApp = AppAddressTCP
+	case e2e.ProtocolGRPC:
+		cfg.ProxyApp = AppAddressTCP
 		cfg.ABCI = "grpc"
 	default:
 		return nil, fmt.Errorf("unexpected ABCI protocol setting %q", node.ABCIProtocol)
@@ -197,26 +209,26 @@ func MakeConfig(testnet *e2e.Testnet, node *e2e.Node) (*config.Config, error) {
 	// key here by default, and use the real key for actual validators that should use
 	// the file privval.
 	cfg.PrivValidatorListenAddr = ""
-	cfg.PrivValidatorKey = "config/dummy_validator_key.json"
-	cfg.PrivValidatorState = "data/dummy_validator_state.json"
+	cfg.PrivValidatorKey = PrivvalDummyKeyFile
+	cfg.PrivValidatorState = PrivvalDummyStateFile
 
 	switch node.Mode {
-	case "validator":
+	case e2e.ModeValidator:
 		switch node.PrivvalProtocol {
-		case "file":
-			cfg.PrivValidatorKey = "config/priv_validator_key.json"
-			cfg.PrivValidatorState = "data/priv_validator_state.json"
-		case "unix":
-			cfg.PrivValidatorListenAddr = "unix:///var/run/privval.sock"
-		case "tcp":
-			cfg.PrivValidatorListenAddr = "tcp://0.0.0.0:27559"
+		case e2e.ProtocolFile:
+			cfg.PrivValidatorKey = PrivvalKeyFile
+			cfg.PrivValidatorState = PrivvalStateFile
+		case e2e.ProtocolUNIX:
+			cfg.PrivValidatorListenAddr = PrivvalAddressUNIX
+		case e2e.ProtocolTCP:
+			cfg.PrivValidatorListenAddr = PrivvalAddressTCP
 		default:
 			return nil, fmt.Errorf("invalid privval protocol setting %q", node.PrivvalProtocol)
 		}
-	case "seed":
+	case e2e.ModeSeed:
 		cfg.P2P.SeedMode = true
 		cfg.P2P.PexReactor = true
-	case "full":
+	case e2e.ModeFull:
 		// Don't need to do anything, since we're using a dummy privval key by default.
 	default:
 		return nil, fmt.Errorf("unexpected mode %q", node.Mode)
@@ -270,33 +282,33 @@ func MakeAppConfig(testnet *e2e.Testnet, node *e2e.Node) ([]byte, error) {
 	cfg := map[string]interface{}{
 		"chain_id":          testnet.Name,
 		"dir":               "data/app",
-		"listen":            "unix:///var/run/app.sock",
+		"listen":            AppAddressUNIX,
 		"grpc":              false,
 		"persist_interval":  node.PersistInterval,
 		"snapshot_interval": node.SnapshotInterval,
 		"retain_blocks":     node.RetainBlocks,
 	}
 	switch node.ABCIProtocol {
-	case "unix":
-		cfg["listen"] = "unix:///var/run/app.sock"
-	case "tcp":
-		cfg["listen"] = "tcp://127.0.0.1:30000"
+	case e2e.ProtocolUNIX:
+		cfg["listen"] = AppAddressUNIX
+	case e2e.ProtocolTCP:
+		cfg["listen"] = AppAddressTCP
 	case "grpc":
-		cfg["listen"] = "tcp://127.0.0.1:30000"
+		cfg["listen"] = AppAddressTCP
 		cfg["grpc"] = true
 	default:
 		return nil, fmt.Errorf("unexpected ABCI protocol setting %q", node.ABCIProtocol)
 	}
 	switch node.PrivvalProtocol {
-	case "file":
-	case "tcp":
-		cfg["privval_server"] = "tcp://127.0.0.1:27559"
-		cfg["privval_key"] = "config/priv_validator_key.json"
-		cfg["privval_state"] = "data/priv_validator_state.json"
-	case "unix":
-		cfg["privval_server"] = "unix:///var/run/privval.sock"
-		cfg["privval_key"] = "config/priv_validator_key.json"
-		cfg["privval_state"] = "data/priv_validator_state.json"
+	case e2e.ProtocolFile:
+	case e2e.ProtocolTCP:
+		cfg["privval_server"] = PrivvalAddressTCP
+		cfg["privval_key"] = PrivvalKeyFile
+		cfg["privval_state"] = PrivvalStateFile
+	case e2e.ProtocolUNIX:
+		cfg["privval_server"] = PrivvalAddressUNIX
+		cfg["privval_key"] = PrivvalKeyFile
+		cfg["privval_state"] = PrivvalStateFile
 	default:
 		return nil, fmt.Errorf("unexpected privval protocol setting %q", node.PrivvalProtocol)
 	}

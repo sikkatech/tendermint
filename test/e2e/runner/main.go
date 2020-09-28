@@ -261,22 +261,9 @@ func (cli *CLI) Start() error {
 // Perturbs a running testnet.
 func (cli *CLI) Perturb() error {
 	for _, node := range cli.testnet.Nodes {
-		for _, perturbation := range node.Perturb {
+		for _, perturbation := range node.Perturbations {
 			switch perturbation {
-			case "restart":
-				logger.Info(fmt.Sprintf("Restarting node %v...", node.Name))
-				if err := cli.runCompose("restart", node.Name); err != nil {
-					return err
-				}
-			case "kill":
-				logger.Info(fmt.Sprintf("Killing node %v...", node.Name))
-				if err := cli.runCompose("kill", "-s", "SIGKILL", node.Name); err != nil {
-					return err
-				}
-				if err := cli.runCompose("start", node.Name); err != nil {
-					return err
-				}
-			case "disconnect":
+			case e2e.PerturbationDisconnect:
 				logger.Info(fmt.Sprintf("Disconnecting node %v...", node.Name))
 				if err := cli.runDocker("network", "disconnect", cli.testnet.Name+"_"+cli.testnet.Name, node.Name); err != nil {
 					return err
@@ -285,13 +272,29 @@ func (cli *CLI) Perturb() error {
 				if err := cli.runDocker("network", "connect", cli.testnet.Name+"_"+cli.testnet.Name, node.Name); err != nil {
 					return err
 				}
-			case "pause":
+
+			case e2e.PerturbationKill:
+				logger.Info(fmt.Sprintf("Killing node %v...", node.Name))
+				if err := cli.runCompose("kill", "-s", "SIGKILL", node.Name); err != nil {
+					return err
+				}
+				if err := cli.runCompose("start", node.Name); err != nil {
+					return err
+				}
+
+			case e2e.PerturbationPause:
 				logger.Info(fmt.Sprintf("Pausing node %v...", node.Name))
 				if err := cli.runCompose("pause", node.Name); err != nil {
 					return err
 				}
 				time.Sleep(5 * time.Second)
 				if err := cli.runCompose("unpause", node.Name); err != nil {
+					return err
+				}
+
+			case e2e.PerturbationRestart:
+				logger.Info(fmt.Sprintf("Restarting node %v...", node.Name))
+				if err := cli.runCompose("restart", node.Name); err != nil {
 					return err
 				}
 
