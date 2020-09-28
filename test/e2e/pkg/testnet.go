@@ -1,5 +1,5 @@
 // nolint: gosec
-package main
+package e2e
 
 import (
 	"context"
@@ -8,8 +8,10 @@ import (
 	"io"
 	"math/rand"
 	"net"
+	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/tendermint/tendermint/crypto"
@@ -22,9 +24,11 @@ import (
 // Testnet represents a single testnet.
 type Testnet struct {
 	Name             string
+	Dir              string
 	IP               *net.IPNet
 	InitialHeight    uint64
 	InitialState     map[string]string
+	Validators       []*Node
 	ValidatorUpdates map[uint64]map[string]uint8
 	Nodes            []*Node
 }
@@ -50,10 +54,24 @@ type Node struct {
 	Perturb          []string
 }
 
-// NewTestnet creates a testnet from a manifest. The testnet generation must be
+// LoadTestnet loads a testnet from a manifest file, using the filename to
+// determine the testnet name and directory (from the basename of the file).
+func LoadTestnet(file string) (*Testnet, error) {
+	manifest, err := LoadManifest(file)
+	if err != nil {
+		return nil, err
+	}
+
+	dir := strings.TrimSuffix(file, filepath.Ext(file))
+	name := filepath.Base(dir)
+
+	return buildTestnet(name, dir, manifest)
+}
+
+// buildTestnet builds a testnet from a manifest. The testnet generation must be
 // deterministic, since it is generated separately by the runner and the test
 // cases. For this reason, testnets use a random seed to generate e.g. keys.
-func NewTestnet(name string, manifest Manifest) (*Testnet, error) {
+func buildTestnet(name string, dir string, manifest Manifest) (*Testnet, error) {
 
 	// Set up pseudorandom generators. They all use the same initial seed, such
 	// that e.g. adding a new node won't cause the network address to change.
@@ -67,9 +85,11 @@ func NewTestnet(name string, manifest Manifest) (*Testnet, error) {
 
 	testnet := &Testnet{
 		Name:             name,
+		Dir:              dir,
 		IP:               ipGen.Network(),
 		InitialHeight:    1,
 		InitialState:     manifest.InitialState,
+		Validators:       []*Node{},
 		ValidatorUpdates: map[uint64]map[string]uint8{},
 		Nodes:            []*Node{},
 	}
@@ -77,11 +97,13 @@ func NewTestnet(name string, manifest Manifest) (*Testnet, error) {
 		testnet.InitialHeight = manifest.InitialHeight
 	}
 
+	// Set up nodes, in alphabetical order (IPs and ports get same order).
 	nodeNames := []string{}
 	for name := range manifest.Nodes {
 		nodeNames = append(nodeNames, name)
 	}
 	sort.Strings(nodeNames)
+
 	for _, name := range nodeNames {
 		nodeManifest := manifest.Nodes[name]
 		node := &Node{
@@ -141,6 +163,25 @@ func NewTestnet(name string, manifest Manifest) (*Testnet, error) {
 		}
 	}
 
+	// Set up genesis validators. If not specified explicitly, use all validator nodes.
+	fmt.Printf("%v", manifest.Validators)
+	if manifest.Validators != nil {
+		for _, validatorName := range *manifest.Validators {
+			validator := testnet.LookupNode(validatorName)
+			if validator == nil {
+				return nil, fmt.Errorf("unknown validator %q", validatorName)
+			}
+			testnet.Validators = append(testnet.Validators, validator)
+		}
+	} else {
+		for _, node := range testnet.Nodes {
+			if node.Mode == "validator" {
+				testnet.Validators = append(testnet.Validators, node)
+			}
+		}
+	}
+
+	// Set up validator updates.
 	for heightStr, validators := range manifest.ValidatorUpdates {
 		height, err := strconv.Atoi(heightStr)
 		if err != nil {
@@ -153,10 +194,7 @@ func NewTestnet(name string, manifest Manifest) (*Testnet, error) {
 		testnet.ValidatorUpdates[uint64(height)] = valUpdate
 	}
 
-	if err := testnet.Validate(); err != nil {
-		return nil, err
-	}
-	return testnet, nil
+	return testnet, testnet.Validate()
 }
 
 // Validate validates a testnet.

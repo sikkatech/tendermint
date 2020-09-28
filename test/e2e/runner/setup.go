@@ -19,11 +19,12 @@ import (
 	"github.com/tendermint/tendermint/crypto/ed25519"
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/privval"
+	e2e "github.com/tendermint/tendermint/test/e2e/pkg"
 	"github.com/tendermint/tendermint/types"
 )
 
 // Setup sets up testnet configuration in a directory.
-func Setup(testnet *Testnet, dir string) error {
+func Setup(testnet *e2e.Testnet, dir string) error {
 	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
 		return err
 	}
@@ -94,7 +95,7 @@ func Setup(testnet *Testnet, dir string) error {
 
 // MakeDockerCompose generates a Docker Compose config for a testnet.
 // Must use version 2 Docker Compose format, to support IPv6.
-func MakeDockerCompose(testnet *Testnet) ([]byte, error) {
+func MakeDockerCompose(testnet *e2e.Testnet) ([]byte, error) {
 	tmpl, err := template.New("docker-compose").Parse(`version: '2.4'
 
 networks:
@@ -136,18 +137,18 @@ services:
 }
 
 // MakeGenesis generates a genesis document.
-func MakeGenesis(testnet *Testnet) (types.GenesisDoc, error) {
+func MakeGenesis(testnet *e2e.Testnet) (types.GenesisDoc, error) {
 	genesis := types.GenesisDoc{
 		GenesisTime:     time.Now(),
 		ChainID:         testnet.Name,
 		ConsensusParams: types.DefaultConsensusParams(),
 		InitialHeight:   int64(testnet.InitialHeight),
 	}
-	for _, node := range testnet.Nodes {
+	for _, validator := range testnet.Validators {
 		genesis.Validators = append(genesis.Validators, types.GenesisValidator{
-			Name:    node.Name,
-			Address: node.Key.PubKey().Address(),
-			PubKey:  node.Key.PubKey(),
+			Name:    validator.Name,
+			Address: validator.Key.PubKey().Address(),
+			PubKey:  validator.Key.PubKey(),
 			Power:   100,
 		})
 	}
@@ -163,7 +164,7 @@ func MakeGenesis(testnet *Testnet) (types.GenesisDoc, error) {
 }
 
 // MakeConfig generates a Tendermint config for a node.
-func MakeConfig(testnet *Testnet, node *Node) (*config.Config, error) {
+func MakeConfig(testnet *e2e.Testnet, node *e2e.Node) (*config.Config, error) {
 	cfg := config.DefaultConfig()
 	cfg.Moniker = node.Name
 	cfg.ProxyApp = "tcp://127.0.0.1:30000"
@@ -259,7 +260,7 @@ func MakeConfig(testnet *Testnet, node *Node) (*config.Config, error) {
 }
 
 // MakeAppConfig generates an ABCI application config for a node.
-func MakeAppConfig(testnet *Testnet, node *Node) ([]byte, error) {
+func MakeAppConfig(testnet *e2e.Testnet, node *e2e.Node) ([]byte, error) {
 	cfg := map[string]interface{}{
 		"chain_id":          testnet.Name,
 		"dir":               "data/app",
@@ -315,12 +316,12 @@ func MakeAppConfig(testnet *Testnet, node *Node) ([]byte, error) {
 }
 
 // MakeNodeKey generates a node key.
-func MakeNodeKey(node *Node) *p2p.NodeKey {
+func MakeNodeKey(node *e2e.Node) *p2p.NodeKey {
 	return &p2p.NodeKey{PrivKey: node.Key}
 }
 
 // UpdateConfigStateSync updates the state sync config for a node.
-func UpdateConfigStateSync(dir string, node *Node, height int64, hash []byte) error {
+func UpdateConfigStateSync(dir string, node *e2e.Node, height int64, hash []byte) error {
 	cfgPath := filepath.Join(dir, node.Name, "config", "config.toml")
 
 	// FIXME Apparently there's no function to simply load a config file without

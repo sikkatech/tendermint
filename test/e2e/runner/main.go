@@ -7,11 +7,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/tendermint/tendermint/libs/log"
+	e2e "github.com/tendermint/tendermint/test/e2e/pkg"
 )
 
 var logger = log.NewTMLogger(log.NewSyncWriter(os.Stdout))
@@ -23,8 +23,7 @@ func main() {
 // CLI is the Cobra-based command-line interface.
 type CLI struct {
 	root    *cobra.Command
-	testnet *Testnet
-	dir     string
+	testnet *e2e.Testnet
 }
 
 // NewCLI sets up the CLI.
@@ -40,20 +39,12 @@ func NewCLI() *CLI {
 			if err != nil {
 				return err
 			}
-			dir := strings.TrimSuffix(file, filepath.Ext(file))
-			name := filepath.Base(dir)
-
-			manifest, err := LoadManifest(file)
-			if err != nil {
-				return err
-			}
-			testnet, err := NewTestnet(name, manifest)
+			testnet, err := e2e.LoadTestnet(file)
 			if err != nil {
 				return err
 			}
 
 			cli.testnet = testnet
-			cli.dir = dir
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -140,7 +131,7 @@ func (cli *CLI) Run() {
 
 // runCompose runs a Docker Compose command.
 func (cli *CLI) runCompose(args ...string) error {
-	args = append([]string{"-f", filepath.Join(cli.dir, "docker-compose.yml")}, args...)
+	args = append([]string{"-f", filepath.Join(cli.testnet.Dir, "docker-compose.yml")}, args...)
 	cmd := exec.Command("docker-compose", args...)
 	out, err := cmd.CombinedOutput()
 	switch err := err.(type) {
@@ -155,7 +146,7 @@ func (cli *CLI) runCompose(args ...string) error {
 
 // runCompose runs a Docker Compose command and displays its output.
 func (cli *CLI) runComposeOutput(args ...string) error {
-	args = append([]string{"-f", filepath.Join(cli.dir, "docker-compose.yml")}, args...)
+	args = append([]string{"-f", filepath.Join(cli.testnet.Dir, "docker-compose.yml")}, args...)
 	cmd := exec.Command("docker-compose", args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -178,8 +169,8 @@ func (cli *CLI) runDocker(args ...string) error {
 
 // Setup generates the testnet configuration.
 func (cli *CLI) Setup() error {
-	logger.Info(fmt.Sprintf("Generating testnet files in %q", cli.dir))
-	err := Setup(cli.testnet, cli.dir)
+	logger.Info(fmt.Sprintf("Generating testnet files in %q", cli.testnet.Dir))
+	err := Setup(cli.testnet, cli.testnet.Dir)
 	if err != nil {
 		return err
 	}
@@ -195,7 +186,7 @@ func (cli *CLI) Start() error {
 	})
 
 	// We'll use the first non-seed node as our main node for network status
-	var mainNode *Node
+	var mainNode *e2e.Node
 	for _, node := range nodeQueue {
 		if node.StartAt == 0 && node.Mode != "seed" {
 			mainNode = node
@@ -240,7 +231,7 @@ func (cli *CLI) Start() error {
 	}
 	for _, node := range nodeQueue {
 		if node.StateSync {
-			err = UpdateConfigStateSync(cli.dir, node, lastBlock.Block.Height, lastBlock.BlockID.Hash.Bytes())
+			err = UpdateConfigStateSync(cli.testnet.Dir, node, lastBlock.Block.Height, lastBlock.BlockID.Hash.Bytes())
 			if err != nil {
 				return err
 			}
@@ -331,10 +322,10 @@ func (cli *CLI) Stop() error {
 
 // Cleanup removes the Docker Compose containers and testnet directory.
 func (cli *CLI) Cleanup() error {
-	if cli.dir == "" {
+	if cli.testnet.Dir == "" {
 		return errors.New("no directory set")
 	}
-	_, err := os.Stat(cli.dir)
+	_, err := os.Stat(cli.testnet.Dir)
 	if os.IsNotExist(err) {
 		return nil
 	} else if err != nil {
@@ -347,8 +338,8 @@ func (cli *CLI) Cleanup() error {
 		return err
 	}
 
-	logger.Info(fmt.Sprintf("Removing testnet directory %q", cli.dir))
-	err = os.RemoveAll(cli.dir)
+	logger.Info(fmt.Sprintf("Removing testnet directory %q", cli.testnet.Dir))
+	err = os.RemoveAll(cli.testnet.Dir)
 	if err != nil {
 		return err
 	}
