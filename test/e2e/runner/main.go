@@ -40,19 +40,14 @@ func NewCLI() *CLI {
 			if err != nil {
 				return err
 			}
-			dir, err := cmd.Flags().GetString("dir")
-			if err != nil {
-				return err
-			}
-			if dir == "" {
-				dir = strings.TrimSuffix(file, filepath.Ext(file))
-			}
+			dir := strings.TrimSuffix(file, filepath.Ext(file))
+			name := filepath.Base(dir)
 
 			manifest, err := LoadManifest(file)
 			if err != nil {
 				return err
 			}
-			testnet, err := NewTestnet(manifest)
+			testnet, err := NewTestnet(name, manifest)
 			if err != nil {
 				return err
 			}
@@ -83,8 +78,6 @@ func NewCLI() *CLI {
 
 	cli.root.PersistentFlags().StringP("file", "f", "", "Testnet TOML manifest")
 	_ = cli.root.MarkPersistentFlagRequired("file")
-	cli.root.PersistentFlags().StringP("dir", "d", "",
-		"Directory to use for testnet data (defaults to manifest dir)")
 
 	cli.root.AddCommand(&cobra.Command{
 		Use:   "setup",

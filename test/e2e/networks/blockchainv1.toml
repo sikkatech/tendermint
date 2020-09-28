@@ -1,5 +1,3 @@
-name = "blockchainv1"
-
 [node.validator01]
 persistent_peers = ["validator02", "validator03", "validator04"]
 retain_blocks = 1

@@ -66,9 +66,9 @@ type Node struct {
 }
 
 // NewTestnet creates a testnet from a manifest.
-func NewTestnet(manifest Manifest) (*Testnet, error) {
+func NewTestnet(name string, manifest Manifest) (*Testnet, error) {
 	testnet := &Testnet{
-		Name:             manifest.Name,
+		Name:             name,
 		IP:               ip4network,
 		InitialHeight:    1,
 		InitialState:     manifest.InitialState,
