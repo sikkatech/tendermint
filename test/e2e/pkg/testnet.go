@@ -132,12 +132,12 @@ func buildTestnet(name string, dir string, manifest Manifest) (*Testnet, error) 
 			IP:               ipGen.Next(),
 			ProxyPort:        proxyPortGen.Next(),
 			Mode:             ModeValidator,
-			StartAt:          nodeManifest.StartAt,
-			FastSync:         nodeManifest.FastSync,
-			StateSync:        nodeManifest.StateSync,
 			Database:         "goleveldb",
 			ABCIProtocol:     ProtocolUNIX,
 			PrivvalProtocol:  ProtocolFile,
+			StartAt:          nodeManifest.StartAt,
+			FastSync:         nodeManifest.FastSync,
+			StateSync:        nodeManifest.StateSync,
 			PersistInterval:  1,
 			SnapshotInterval: nodeManifest.SnapshotInterval,
 			RetainBlocks:     nodeManifest.RetainBlocks,
@@ -183,6 +183,17 @@ func buildTestnet(name string, dir string, manifest Manifest) (*Testnet, error) 
 				return nil, fmt.Errorf("unknown persistent peer %q for node %q", peerName, node.Name)
 			}
 			node.PersistentPeers = append(node.PersistentPeers, peer)
+		}
+
+		// If there are no seeds or persistent peers specified, default to persistent
+		// connections to all other nodes.
+		if len(node.PersistentPeers) == 0 && len(node.Seeds) == 0 {
+			for _, peer := range testnet.Nodes {
+				if peer.Name == node.Name {
+					continue
+				}
+				node.PersistentPeers = append(node.PersistentPeers, peer)
+			}
 		}
 	}
 

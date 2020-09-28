@@ -33,8 +33,8 @@ const (
 	PrivvalAddressUNIX    = "unix:///var/run/privval.sock"
 	PrivvalKeyFile        = "config/priv_validator_key.json"
 	PrivvalStateFile      = "data/priv_validator_state.json"
-	PrivvalDummyKeyFile   = "config/priv_validator_key.json"
-	PrivvalDummyStateFile = "data/priv_validator_state.json"
+	PrivvalDummyKeyFile   = "config/dummy_validator_key.json"
+	PrivvalDummyStateFile = "data/dummy_validator_state.json"
 )
 
 // Setup sets up testnet configuration in a directory.
