@@ -10,6 +10,7 @@ import (
 
 // Manifest represents a testnet manifest, specified as TOML.
 type Manifest struct {
+	Seed             int64
 	IPv6             bool                        `toml:"ipv6"`
 	InitialHeight    uint64                      `toml:"initial_height"`
 	InitialState     map[string]string           `toml:"initial_state"`

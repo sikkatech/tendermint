@@ -1,3 +1,4 @@
+seed = 78430260757
 initial_height = 1000
 initial_state = { foo = "bar" }
 ipv6 = false

@@ -1,9 +1,12 @@
+// nolint: gosec
 package main
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"math/rand"
 	"net"
 	"sort"
 	"strconv"
@@ -16,25 +19,7 @@ import (
 	rpctypes "github.com/tendermint/tendermint/rpc/core/types"
 )
 
-var (
-	ip4network     *net.IPNet
-	ip6network     *net.IPNet
-	proxyPortFirst uint32 = 5701
-)
-
-func init() {
-	var err error
-	_, ip4network, err = net.ParseCIDR("10.200.0.0/16")
-	if err != nil {
-		panic(err)
-	}
-	_, ip6network, err = net.ParseCIDR("fd80:b10c::/48")
-	if err != nil {
-		panic(err)
-	}
-}
-
-// Testnet represents a single testnet
+// Testnet represents a single testnet.
 type Testnet struct {
 	Name             string
 	IP               *net.IPNet
@@ -44,7 +29,7 @@ type Testnet struct {
 	Nodes            []*Node
 }
 
-// Node represents a Tendermint node in a testnet
+// Node represents a Tendermint node in a testnet.
 type Node struct {
 	Name             string
 	Mode             string
@@ -65,11 +50,24 @@ type Node struct {
 	Perturb          []string
 }
 
-// NewTestnet creates a testnet from a manifest.
+// NewTestnet creates a testnet from a manifest. The testnet generation must be
+// deterministic, since it is generated separately by the runner and the test
+// cases. For this reason, testnets use a random seed to generate e.g. keys.
 func NewTestnet(name string, manifest Manifest) (*Testnet, error) {
+
+	// Set up pseudorandom generators. They all use the same initial seed, such
+	// that e.g. adding a new node won't cause the network address to change.
+	seed := int64(2308084734268)
+	if manifest.Seed != 0 {
+		seed = manifest.Seed
+	}
+	keyGen := newKeyGenerator(seed)
+	ipGen := newIPGenerator(seed, manifest.IPv6)
+	proxyPortGen := newPortGenerator(5701)
+
 	testnet := &Testnet{
 		Name:             name,
-		IP:               ip4network,
+		IP:               ipGen.Network(),
 		InitialHeight:    1,
 		InitialState:     manifest.InitialState,
 		ValidatorUpdates: map[uint64]map[string]uint8{},
@@ -78,12 +76,7 @@ func NewTestnet(name string, manifest Manifest) (*Testnet, error) {
 	if manifest.InitialHeight > 0 {
 		testnet.InitialHeight = manifest.InitialHeight
 	}
-	if manifest.IPv6 {
-		testnet.IP = ip6network
-	}
 
-	ip := nextIP(nextIP(testnet.IP.IP)) // increment twice to skip gateway address
-	proxyPort := proxyPortFirst
 	nodeNames := []string{}
 	for name := range manifest.Nodes {
 		nodeNames = append(nodeNames, name)
@@ -91,13 +84,39 @@ func NewTestnet(name string, manifest Manifest) (*Testnet, error) {
 	sort.Strings(nodeNames)
 	for _, name := range nodeNames {
 		nodeManifest := manifest.Nodes[name]
-		node, err := NewNode(name, ip, proxyPort, nodeManifest)
-		if err != nil {
-			return nil, err
+		node := &Node{
+			Name:             name,
+			Key:              keyGen.Generate(),
+			IP:               ipGen.Next(),
+			ProxyPort:        proxyPortGen.Next(),
+			Mode:             "validator",
+			StartAt:          nodeManifest.StartAt,
+			FastSync:         nodeManifest.FastSync,
+			StateSync:        nodeManifest.StateSync,
+			Database:         "goleveldb",
+			ABCIProtocol:     "unix",
+			PrivvalProtocol:  "file",
+			PersistInterval:  1,
+			SnapshotInterval: nodeManifest.SnapshotInterval,
+			RetainBlocks:     nodeManifest.RetainBlocks,
+			Perturb:          nodeManifest.Perturb,
+		}
+		if nodeManifest.Mode != "" {
+			node.Mode = nodeManifest.Mode
+		}
+		if nodeManifest.Database != "" {
+			node.Database = nodeManifest.Database
+		}
+		if nodeManifest.ABCIProtocol != "" {
+			node.ABCIProtocol = nodeManifest.ABCIProtocol
+		}
+		if nodeManifest.PrivvalProtocol != "" {
+			node.PrivvalProtocol = nodeManifest.PrivvalProtocol
+		}
+		if nodeManifest.PersistInterval != nil {
+			node.PersistInterval = *nodeManifest.PersistInterval
 		}
 		testnet.Nodes = append(testnet.Nodes, node)
-		ip = nextIP(ip)
-		proxyPort++
 	}
 
 	// We do a second pass to set up seeds and persistent peers, which allows graph cycles.
@@ -138,43 +157,6 @@ func NewTestnet(name string, manifest Manifest) (*Testnet, error) {
 		return nil, err
 	}
 	return testnet, nil
-}
-
-// NewNode creates a new testnet node from a node manifest.
-func NewNode(name string, ip net.IP, proxyPort uint32, nodeManifest ManifestNode) (*Node, error) {
-	node := &Node{
-		Name:             name,
-		Key:              ed25519.GenPrivKey(),
-		IP:               ip,
-		ProxyPort:        proxyPort,
-		Mode:             "validator",
-		StartAt:          nodeManifest.StartAt,
-		FastSync:         nodeManifest.FastSync,
-		StateSync:        nodeManifest.StateSync,
-		Database:         "goleveldb",
-		ABCIProtocol:     "unix",
-		PrivvalProtocol:  "file",
-		PersistInterval:  1,
-		SnapshotInterval: nodeManifest.SnapshotInterval,
-		RetainBlocks:     nodeManifest.RetainBlocks,
-		Perturb:          nodeManifest.Perturb,
-	}
-	if nodeManifest.Mode != "" {
-		node.Mode = nodeManifest.Mode
-	}
-	if nodeManifest.Database != "" {
-		node.Database = nodeManifest.Database
-	}
-	if nodeManifest.ABCIProtocol != "" {
-		node.ABCIProtocol = nodeManifest.ABCIProtocol
-	}
-	if nodeManifest.PrivvalProtocol != "" {
-		node.PrivvalProtocol = nodeManifest.PrivvalProtocol
-	}
-	if nodeManifest.PersistInterval != nil {
-		node.PersistInterval = *nodeManifest.PersistInterval
-	}
-	return node, nil
 }
 
 // Validate validates a testnet.
@@ -345,15 +327,101 @@ func (n Node) WaitFor(height uint64, timeout time.Duration) (*rpctypes.ResultSta
 	}
 }
 
-// nextIP increments the IP address and returns it
-func nextIP(ip net.IP) net.IP {
-	next := make([]byte, len(ip))
-	copy(next, ip)
-	for i := len(next) - 1; i >= 0; i-- {
-		next[i]++
-		if next[i] != 0 {
+// keyGenerator generates pseudorandom Ed25519 keys based on a seed.
+type keyGenerator struct {
+	random *rand.Rand
+}
+
+func newKeyGenerator(seed int64) *keyGenerator {
+	return &keyGenerator{
+		random: rand.New(rand.NewSource(seed)),
+	}
+}
+
+func (g *keyGenerator) Generate() crypto.PrivKey {
+	seed := make([]byte, ed25519.SeedSize)
+
+	_, err := io.ReadFull(g.random, seed)
+	if err != nil {
+		panic(err) // this shouldn't happen
+	}
+
+	return ed25519.GenPrivKeyFromSecret(seed)
+}
+
+// portGenerator generates local Docker proxy ports for each node.
+type portGenerator struct {
+	nextPort uint32
+}
+
+func newPortGenerator(firstPort uint32) *portGenerator {
+	return &portGenerator{nextPort: firstPort}
+}
+
+func (g *portGenerator) Next() uint32 {
+	port := g.nextPort
+	g.nextPort++
+	if g.nextPort == 0 {
+		panic("port overflow")
+	}
+	return port
+}
+
+// ipGenerator generates sequential IP addresses for each node, using a random
+// network address.
+type ipGenerator struct {
+	network *net.IPNet
+	nextIP  net.IP
+}
+
+func newIPGenerator(seed int64, ipv6 bool) *ipGenerator {
+	r := rand.New(rand.NewSource(seed))
+	n := &net.IPNet{}
+	if ipv6 {
+		n.IP = net.IPv6zero
+		n.Mask = net.CIDRMask(48, 128) // 2^80 hosts.
+		n.IP[0] = 0xfd                 // Local IPv6 network, see RFC-4193.
+		_, err := r.Read(n.IP[1:6])    // Next 40 bits of prefix are random.
+		if err != nil {
+			panic(err) // Shouldn't happen
+		}
+	} else {
+		n.IP = []byte{0x0a, 0, 0, 0}       // 10.
+		n.Mask = net.CIDRMask(24, 32)      // 254 hosts.
+		for n.IP[1] == 0 && n.IP[2] == 0 { // Never use 10.0.0.0
+			if _, err := r.Read(n.IP[1:3]); err != nil {
+				panic(err) // Shouldn't happen
+			}
+		}
+	}
+
+	nextIP := make([]byte, len(n.IP))
+	copy(nextIP, n.IP)
+	gen := &ipGenerator{network: n, nextIP: nextIP}
+	// Skip network and gateway addresses
+	gen.Next()
+	gen.Next()
+	return gen
+}
+
+func (g *ipGenerator) Network() *net.IPNet {
+	n := &net.IPNet{
+		IP:   make([]byte, len(g.network.IP)),
+		Mask: make([]byte, len(g.network.Mask)),
+	}
+	copy(n.IP, g.network.IP)
+	copy(n.Mask, g.network.Mask)
+	return n
+}
+
+func (g *ipGenerator) Next() net.IP {
+	ip := make([]byte, len(g.nextIP))
+	copy(ip, g.nextIP)
+	for i := len(g.nextIP) - 1; i >= 0; i-- {
+		g.nextIP[i]++
+		if g.nextIP[i] != 0 {
 			break
 		}
 	}
-	return next
+	return ip
 }
