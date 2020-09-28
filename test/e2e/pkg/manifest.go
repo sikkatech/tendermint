@@ -22,10 +22,11 @@ type Manifest struct {
 	// set in genesis. Defaults to nothing.
 	InitialState map[string]string `toml:"initial_state"`
 
-	// Validators is the initial validator set in genesis. Defaults to all nodes
-	// with mode=validator given power 100. Explicitly specifying an empty list
-	// will start with no validators in genesis.
-	Validators *[]string
+	// Validators is the initial validator set in genesis, given as node names
+	// and power. Defaults to all nodes with mode=validator at power 100.
+	// Explicitly specifying an empty set will start with no validators in
+	// genesis.
+	Validators *map[string]int64
 
 	// ValidatorUpdates is a map of heights to validator names and their power,
 	// and will be returned by the ABCI application. For example, the following
@@ -39,7 +40,7 @@ type Manifest struct {
 	// InitChain. The application returns the validator updates as-is, i.e.
 	// removing a validator must be done by returning it with power 0, and
 	// any validators not specified are not changed.
-	ValidatorUpdates map[string]map[string]uint8 `toml:"validator_update"`
+	ValidatorUpdates map[string]map[string]int64 `toml:"validator_update"`
 
 	// Nodes specifies the network nodes. At least one node must be given.
 	Nodes map[string]ManifestNode `toml:"node"`

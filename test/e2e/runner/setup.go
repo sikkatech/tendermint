@@ -11,6 +11,8 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
+	"strings"
 	"text/template"
 	"time"
 
@@ -144,14 +146,19 @@ func MakeGenesis(testnet *e2e.Testnet) (types.GenesisDoc, error) {
 		ConsensusParams: types.DefaultConsensusParams(),
 		InitialHeight:   int64(testnet.InitialHeight),
 	}
-	for _, validator := range testnet.Validators {
+	for validator, power := range testnet.Validators {
 		genesis.Validators = append(genesis.Validators, types.GenesisValidator{
 			Name:    validator.Name,
 			Address: validator.Key.PubKey().Address(),
 			PubKey:  validator.Key.PubKey(),
-			Power:   100,
+			Power:   power,
 		})
 	}
+	// The validator set will be sorted internally by Tendermint ranked by power,
+	// but we sort it here as well so that all genesis files are identical.
+	sort.Slice(genesis.Validators, func(i, j int) bool {
+		return strings.Compare(genesis.Validators[i].Name, genesis.Validators[j].Name) == -1
+	})
 	if len(testnet.InitialState) > 0 {
 		appState, err := json.Marshal(testnet.InitialState)
 		if err != nil {
@@ -159,8 +166,7 @@ func MakeGenesis(testnet *e2e.Testnet) (types.GenesisDoc, error) {
 		}
 		genesis.AppState = appState
 	}
-	err := genesis.ValidateAndComplete()
-	return genesis, err
+	return genesis, genesis.ValidateAndComplete()
 }
 
 // MakeConfig generates a Tendermint config for a node.
@@ -296,11 +302,11 @@ func MakeAppConfig(testnet *e2e.Testnet, node *e2e.Node) ([]byte, error) {
 	}
 
 	if len(testnet.ValidatorUpdates) > 0 {
-		validatorUpdates := map[string]map[string]uint8{}
+		validatorUpdates := map[string]map[string]int64{}
 		for height, validators := range testnet.ValidatorUpdates {
-			updateVals := map[string]uint8{}
-			for name, power := range validators {
-				updateVals[base64.StdEncoding.EncodeToString(testnet.LookupNode(name).Key.PubKey().Bytes())] = power
+			updateVals := map[string]int64{}
+			for node, power := range validators {
+				updateVals[base64.StdEncoding.EncodeToString(node.Key.PubKey().Bytes())] = power
 			}
 			validatorUpdates[fmt.Sprintf("%v", height)] = updateVals
 		}

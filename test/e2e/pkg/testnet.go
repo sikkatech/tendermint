@@ -28,8 +28,8 @@ type Testnet struct {
 	IP               *net.IPNet
 	InitialHeight    uint64
 	InitialState     map[string]string
-	Validators       []*Node
-	ValidatorUpdates map[uint64]map[string]uint8
+	Validators       map[*Node]int64
+	ValidatorUpdates map[uint64]map[*Node]int64
 	Nodes            []*Node
 }
 
@@ -89,8 +89,8 @@ func buildTestnet(name string, dir string, manifest Manifest) (*Testnet, error) 
 		IP:               ipGen.Network(),
 		InitialHeight:    1,
 		InitialState:     manifest.InitialState,
-		Validators:       []*Node{},
-		ValidatorUpdates: map[uint64]map[string]uint8{},
+		Validators:       map[*Node]int64{},
+		ValidatorUpdates: map[uint64]map[*Node]int64{},
 		Nodes:            []*Node{},
 	}
 	if manifest.InitialHeight > 0 {
@@ -164,19 +164,18 @@ func buildTestnet(name string, dir string, manifest Manifest) (*Testnet, error) 
 	}
 
 	// Set up genesis validators. If not specified explicitly, use all validator nodes.
-	fmt.Printf("%v", manifest.Validators)
 	if manifest.Validators != nil {
-		for _, validatorName := range *manifest.Validators {
+		for validatorName, power := range *manifest.Validators {
 			validator := testnet.LookupNode(validatorName)
 			if validator == nil {
 				return nil, fmt.Errorf("unknown validator %q", validatorName)
 			}
-			testnet.Validators = append(testnet.Validators, validator)
+			testnet.Validators[validator] = power
 		}
 	} else {
 		for _, node := range testnet.Nodes {
 			if node.Mode == "validator" {
-				testnet.Validators = append(testnet.Validators, node)
+				testnet.Validators[node] = 100
 			}
 		}
 	}
@@ -187,9 +186,13 @@ func buildTestnet(name string, dir string, manifest Manifest) (*Testnet, error) 
 		if err != nil {
 			return nil, fmt.Errorf("invalid validator update height %q: %w", height, err)
 		}
-		valUpdate := map[string]uint8{}
+		valUpdate := map[*Node]int64{}
 		for name, power := range validators {
-			valUpdate[name] = power
+			node := testnet.LookupNode(name)
+			if node == nil {
+				return nil, fmt.Errorf("unknown validator %q for update at height %v", name, height)
+			}
+			valUpdate[node] = power
 		}
 		testnet.ValidatorUpdates[uint64(height)] = valUpdate
 	}
@@ -213,14 +216,6 @@ func (t Testnet) Validate() error {
 			return fmt.Errorf("invalid node %q: %w", node.Name, err)
 		}
 	}
-	for height, valUpdate := range t.ValidatorUpdates {
-		for name := range valUpdate {
-			if t.LookupNode(name) == nil {
-				return fmt.Errorf("unknown node %q for validator update at height %v", name, height)
-			}
-		}
-	}
-
 	return nil
 }
 
