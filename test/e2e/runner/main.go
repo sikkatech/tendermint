@@ -260,6 +260,7 @@ func (cli *CLI) Start() error {
 
 // Perturbs a running testnet.
 func (cli *CLI) Perturb() error {
+	lastHeight := int64(0)
 	for _, node := range cli.testnet.Nodes {
 		for _, perturbation := range node.Perturbations {
 			switch perturbation {
@@ -307,8 +308,28 @@ func (cli *CLI) Perturb() error {
 				return err
 			}
 			logger.Info(fmt.Sprintf("Node %v recovered at height %v", node.Name, status.SyncInfo.LatestBlockHeight))
+			if status.SyncInfo.LatestBlockHeight > lastHeight {
+				lastHeight = status.SyncInfo.LatestBlockHeight
+			}
 		}
 	}
+
+	// Wait for another 10 blocks to be produced.
+	if lastHeight > 0 {
+		for _, node := range cli.testnet.Nodes {
+			if node.Mode == e2e.ModeValidator {
+				waitFor := lastHeight + 10
+				logger.Info(fmt.Sprintf("Waiting for height %v...", waitFor))
+
+				_, err := node.WaitFor(uint64(waitFor), 1*time.Minute)
+				if err != nil {
+					return err
+				}
+				break
+			}
+		}
+	}
+
 	return nil
 }
 
