@@ -1,5 +1,12 @@
 # End-to-End Tests
 
+Spins up and tests Tendermint networks in Docker Compose based on a testnet manifest file.
+
+```sh
+$ make docker
+$ make ci
+```
+
 ## Testnet Manifests
 
 Testnets are specified as TOML manifests. For an example see [`networks/ci.toml`](networks/ci.toml), and for documentation see [`pkg/manifest.go`](pkg/manifest.go).

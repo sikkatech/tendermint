@@ -1,11 +1,15 @@
-# Makefile for end-to-end tests
-
-build-docker-e2e:
+docker:
 	docker build --tag tendermint/e2e-node -f docker/Dockerfile ../..
-.PHONY: build-docker-e2e
 
-app: app/app
-.PHONY: app
+ci: build/runner
+	./build/runner -f networks/ci.toml
 
-app/app:
-	go build -o app/app ./app/...
+app: build/app
+build/app:
+	go build -o build/app ./app
+
+runner: build/runner
+build/runner:
+	go build -o build/runner ./runner
+
+.PHONY: app ci docker runner test
