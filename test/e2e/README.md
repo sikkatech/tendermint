@@ -1,15 +1,32 @@
 # End-to-End Tests
 
-Spins up and tests Tendermint networks in Docker Compose based on a testnet manifest file.
+Spins up and tests Tendermint networks in Docker Compose based on a testnet manifest file. The following commands will run the CI testnet:
 
 ```sh
 $ make docker
-$ make ci
+$ make runner
+$ ./build/runner -f networks/ci.toml
 ```
+
+This creates a testnet named `ci` under `networks/ci` (given by manifest filename), spins up Docker containers, and runs tests against them.
 
 ## Testnet Manifests
 
 Testnets are specified as TOML manifests. For an example see [`networks/ci.toml`](networks/ci.toml), and for documentation see [`pkg/manifest.go`](pkg/manifest.go).
+
+## Test Stages
+
+The test runner has the following stages, which can also be executed explicitly by running `./build/runner -f <manifest> <stage>`:
+
+* `setup`: generates configuration files.
+
+* `start`: starts Docker containers.
+
+* `perturb`: runs any requested perturbations (e.g. node restarts or network disconnects).
+
+* `stop`: stops Docker containers.
+
+* `cleanup`: removes configuration files and Docker containers/networks.
 
 ## Enabling IPv6
 

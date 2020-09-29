@@ -164,7 +164,7 @@ func MakeGenesis(testnet *e2e.Testnet) (types.GenesisDoc, error) {
 		GenesisTime:     time.Now(),
 		ChainID:         testnet.Name,
 		ConsensusParams: types.DefaultConsensusParams(),
-		InitialHeight:   int64(testnet.InitialHeight),
+		InitialHeight:   testnet.InitialHeight,
 	}
 	for validator, power := range testnet.Validators {
 		genesis.Validators = append(genesis.Validators, types.GenesisValidator{
@@ -195,7 +195,7 @@ func MakeConfig(node *e2e.Node) (*config.Config, error) {
 	cfg.Moniker = node.Name
 	cfg.ProxyApp = AppAddressTCP
 	cfg.RPC.ListenAddress = "tcp://0.0.0.0:26657"
-	cfg.P2P.ExternalAddress = fmt.Sprintf("tcp://%v", node.Address())
+	cfg.P2P.ExternalAddress = fmt.Sprintf("tcp://%v", node.AddressP2P(false))
 	cfg.P2P.AddrBookStrict = false
 	cfg.DBBackend = node.Database
 	cfg.StateSync.DiscoveryTime = 5 * time.Second
@@ -251,17 +251,11 @@ func MakeConfig(node *e2e.Node) (*config.Config, error) {
 	if node.StateSync {
 		cfg.StateSync.Enable = true
 		cfg.StateSync.RPCServers = []string{}
-		for _, peer := range node.Testnet.Nodes {
-			switch {
-			case peer.Name == node.Name:
+		for _, peer := range node.Testnet.ArchiveNodes() {
+			if peer.Name == node.Name {
 				continue
-			case peer.StartAt > 0:
-				continue
-			case peer.RetainBlocks > 0:
-				continue
-			default:
-				cfg.StateSync.RPCServers = append(cfg.StateSync.RPCServers, peer.AddressRPC())
 			}
+			cfg.StateSync.RPCServers = append(cfg.StateSync.RPCServers, peer.AddressRPC())
 		}
 		if len(cfg.StateSync.RPCServers) < 2 {
 			return nil, errors.New("unable to find 2 suitable state sync RPC servers")
@@ -273,14 +267,14 @@ func MakeConfig(node *e2e.Node) (*config.Config, error) {
 		if len(cfg.P2P.Seeds) > 0 {
 			cfg.P2P.Seeds += ","
 		}
-		cfg.P2P.Seeds += seed.AddressWithID()
+		cfg.P2P.Seeds += seed.AddressP2P(true)
 	}
 	cfg.P2P.PersistentPeers = ""
 	for _, peer := range node.PersistentPeers {
 		if len(cfg.P2P.PersistentPeers) > 0 {
 			cfg.P2P.PersistentPeers += ","
 		}
-		cfg.P2P.PersistentPeers += peer.AddressWithID()
+		cfg.P2P.PersistentPeers += peer.AddressP2P(true)
 	}
 	return cfg, nil
 }

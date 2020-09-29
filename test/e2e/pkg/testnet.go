@@ -2,7 +2,6 @@
 package e2e
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -12,13 +11,11 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/tendermint/tendermint/crypto"
 	"github.com/tendermint/tendermint/crypto/ed25519"
 	rpc "github.com/tendermint/tendermint/rpc/client"
 	rpchttp "github.com/tendermint/tendermint/rpc/client/http"
-	rpctypes "github.com/tendermint/tendermint/rpc/core/types"
 )
 
 type Mode string
@@ -46,7 +43,7 @@ type Testnet struct {
 	Name             string
 	Dir              string
 	IP               *net.IPNet
-	InitialHeight    uint64
+	InitialHeight    int64
 	InitialState     map[string]string
 	Validators       map[*Node]int64
 	ValidatorUpdates map[uint64]map[*Node]int64
@@ -61,7 +58,7 @@ type Node struct {
 	Key              crypto.PrivKey
 	IP               net.IP
 	ProxyPort        uint32
-	StartAt          uint64
+	StartAt          int64
 	FastSync         string
 	StateSync        bool
 	Database         string
@@ -330,19 +327,36 @@ func (t Testnet) LookupNode(name string) *Node {
 	return nil
 }
 
+// ArchiveNodes returns a list of archive nodes that start at the initial height
+// and contain the entire blockchain history. They are used e.g. as light client
+// RPC servers.
+func (t Testnet) ArchiveNodes() []*Node {
+	nodes := []*Node{}
+	for _, node := range t.Nodes {
+		if node.Mode != ModeSeed && node.StartAt == 0 && node.RetainBlocks == 0 {
+			nodes = append(nodes, node)
+		}
+	}
+	return nodes
+}
+
 // IPv6 returns true if the testnet is an IPv6 network.
 func (t Testnet) IPv6() bool {
 	return t.IP.IP.To4() == nil
 }
 
 // Address returns a P2P endpoint address for the node.
-func (n Node) Address() string {
+func (n Node) AddressP2P(withID bool) string {
 	ip := n.IP.String()
 	if n.IP.To4() == nil {
 		// IPv6 addresses must be wrapped in [] to avoid conflict with : port separator
 		ip = fmt.Sprintf("[%v]", ip)
 	}
-	return fmt.Sprintf("%v:26656", ip)
+	addr := fmt.Sprintf("%v:26656", ip)
+	if withID {
+		addr = fmt.Sprintf("%x@%v", n.Key.PubKey().Address().Bytes(), addr)
+	}
+	return addr
 }
 
 // Address returns an RPC endpoint address for the node.
@@ -355,40 +369,9 @@ func (n Node) AddressRPC() string {
 	return fmt.Sprintf("%v:26657", ip)
 }
 
-// Address returns a P2P endpoint address for the node, including the node ID.
-func (n Node) AddressWithID() string {
-	return fmt.Sprintf("%x@%v", n.Key.PubKey().Address().Bytes(), n.Address())
-}
-
 // Client returns an RPC client for a node.
 func (n Node) Client() (rpc.Client, error) {
 	return rpchttp.New(fmt.Sprintf("http://127.0.0.1:%v", n.ProxyPort), "/websocket")
-}
-
-// LastBlock fetches the last block.
-func (n Node) LastBlock() (*rpctypes.ResultBlock, error) {
-	client, err := n.Client()
-	if err != nil {
-		return nil, err
-	}
-	return client.Block(context.Background(), nil)
-}
-
-// WaitFor waits for the node to become available and catch up to the given block height.
-func (n Node) WaitFor(height uint64, timeout time.Duration) (*rpctypes.ResultStatus, error) {
-	client, err := n.Client()
-	if err != nil {
-		return nil, err
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-	for {
-		status, err := client.Status(ctx)
-		if err == nil && status.SyncInfo.LatestBlockHeight >= int64(height) {
-			return status, nil
-		}
-		time.Sleep(200 * time.Millisecond)
-	}
 }
 
 // keyGenerator generates pseudorandom Ed25519 keys based on a seed.
