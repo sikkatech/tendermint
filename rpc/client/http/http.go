@@ -153,6 +153,11 @@ func NewWithClient(remote, wsEndpoint string, client *http.Client) (*HTTP, error
 	return httpClient, nil
 }
 
+// Close closes the HTTP client.
+func (c *HTTP) Close() error {
+	return c.rpc.Close()
+}
+
 var _ rpcclient.Client = (*HTTP)(nil)
 
 // SetLogger sets a logger.

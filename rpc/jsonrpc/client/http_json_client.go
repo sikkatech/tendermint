@@ -150,6 +150,12 @@ func NewWithHTTPClient(remote string, client *http.Client) (*Client, error) {
 	return rpcClient, nil
 }
 
+// Close closes the client.
+func (c *Client) Close() error {
+	c.client.CloseIdleConnections()
+	return nil
+}
+
 // Call issues a POST HTTP request. Requests are JSON encoded. Content-Type:
 // text/json.
 func (c *Client) Call(ctx context.Context, method string,
