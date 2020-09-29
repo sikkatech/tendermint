@@ -56,6 +56,7 @@ type Testnet struct {
 // Node represents a Tendermint node in a testnet.
 type Node struct {
 	Name             string
+	Testnet          *Testnet
 	Mode             Mode
 	Key              crypto.PrivKey
 	IP               net.IP
@@ -128,6 +129,7 @@ func buildTestnet(name string, dir string, manifest Manifest) (*Testnet, error) 
 		nodeManifest := manifest.Nodes[name]
 		node := &Node{
 			Name:             name,
+			Testnet:          testnet,
 			Key:              keyGen.Generate(),
 			IP:               ipGen.Next(),
 			ProxyPort:        proxyPortGen.Next(),

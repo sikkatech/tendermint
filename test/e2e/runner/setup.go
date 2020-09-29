@@ -37,9 +37,10 @@ const (
 	PrivvalDummyStateFile = "data/dummy_validator_state.json"
 )
 
-// Setup sets up testnet configuration in a directory.
-func Setup(testnet *e2e.Testnet, dir string) error {
-	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
+// Setup sets up the testnet configuration.
+func Setup(testnet *e2e.Testnet) error {
+	err := os.MkdirAll(testnet.Dir, os.ModePerm)
+	if err != nil {
 		return err
 	}
 
@@ -47,7 +48,8 @@ func Setup(testnet *e2e.Testnet, dir string) error {
 	if err != nil {
 		return err
 	}
-	if err := ioutil.WriteFile(filepath.Join(dir, "docker-compose.yml"), compose, 0644); err != nil {
+	err = ioutil.WriteFile(filepath.Join(testnet.Dir, "docker-compose.yml"), compose, 0644)
+	if err != nil {
 		return err
 	}
 
@@ -55,40 +57,43 @@ func Setup(testnet *e2e.Testnet, dir string) error {
 	if err != nil {
 		return err
 	}
+
 	for _, node := range testnet.Nodes {
-		nodeDir := filepath.Join(dir, node.Name)
-		cfg, err := MakeConfig(testnet, node)
-		if err != nil {
-			return err
+		nodeDir := filepath.Join(testnet.Dir, node.Name)
+		dirs := []string{
+			filepath.Join(nodeDir, "config"),
+			filepath.Join(nodeDir, "data"),
+			filepath.Join(nodeDir, "data", "app"),
 		}
-		appCfg, err := MakeAppConfig(testnet, node)
+		for _, dir := range dirs {
+			err := os.MkdirAll(dir, 0755)
+			if err != nil {
+				return err
+			}
+		}
+
+		err = genesis.SaveAs(filepath.Join(nodeDir, "config", "genesis.json"))
 		if err != nil {
 			return err
 		}
 
-		if err := os.MkdirAll(nodeDir, 0755); err != nil {
-			return err
-		}
-		if err := os.MkdirAll(filepath.Join(nodeDir, "config"), 0755); err != nil {
-			return err
-		}
-		if err := os.MkdirAll(filepath.Join(nodeDir, "data"), 0755); err != nil {
-			return err
-		}
-		if err := os.MkdirAll(filepath.Join(nodeDir, "data", "app"), 0755); err != nil {
-			return err
-		}
-		if err := genesis.SaveAs(filepath.Join(nodeDir, "config", "genesis.json")); err != nil {
+		cfg, err := MakeConfig(node)
+		if err != nil {
 			return err
 		}
 		config.WriteConfigFile(filepath.Join(nodeDir, "config", "config.toml"), cfg) // panics
-		if err := ioutil.WriteFile(filepath.Join(nodeDir, "config", "app.toml"), appCfg, 0644); err != nil {
+
+		appCfg, err := MakeAppConfig(node)
+		if err != nil {
 			return err
 		}
-		if err := genesis.SaveAs(filepath.Join(nodeDir, "config", "genesis.json")); err != nil {
+		err = ioutil.WriteFile(filepath.Join(nodeDir, "config", "app.toml"), appCfg, 0644)
+		if err != nil {
 			return err
 		}
-		if err := MakeNodeKey(node).SaveAs(filepath.Join(nodeDir, "config", "node_key.json")); err != nil {
+
+		err = (&p2p.NodeKey{PrivKey: node.Key}).SaveAs(filepath.Join(nodeDir, "config", "node_key.json"))
+		if err != nil {
 			return err
 		}
 
@@ -96,6 +101,7 @@ func Setup(testnet *e2e.Testnet, dir string) error {
 			filepath.Join(nodeDir, PrivvalKeyFile),
 			filepath.Join(nodeDir, PrivvalStateFile),
 		)).Save()
+
 		// Set up a dummy validator. Tendermint requires a file PV even when not used, so we
 		// give it a dummy such that it will fail if it actually tries to use it.
 		(privval.NewFilePV(ed25519.GenPrivKey(),
@@ -108,8 +114,8 @@ func Setup(testnet *e2e.Testnet, dir string) error {
 }
 
 // MakeDockerCompose generates a Docker Compose config for a testnet.
-// Must use version 2 Docker Compose format, to support IPv6.
 func MakeDockerCompose(testnet *e2e.Testnet) ([]byte, error) {
+	// Must use version 2 Docker Compose format, to support IPv6.
 	tmpl, err := template.New("docker-compose").Parse(`version: '2.4'
 
 networks:
@@ -182,7 +188,7 @@ func MakeGenesis(testnet *e2e.Testnet) (types.GenesisDoc, error) {
 }
 
 // MakeConfig generates a Tendermint config for a node.
-func MakeConfig(testnet *e2e.Testnet, node *e2e.Node) (*config.Config, error) {
+func MakeConfig(node *e2e.Node) (*config.Config, error) {
 	cfg := config.DefaultConfig()
 	cfg.Moniker = node.Name
 	cfg.ProxyApp = AppAddressTCP
@@ -243,7 +249,7 @@ func MakeConfig(testnet *e2e.Testnet, node *e2e.Node) (*config.Config, error) {
 	if node.StateSync {
 		cfg.StateSync.Enable = true
 		cfg.StateSync.RPCServers = []string{}
-		for _, peer := range testnet.Nodes {
+		for _, peer := range node.Testnet.Nodes {
 			switch {
 			case peer.Name == node.Name:
 				continue
@@ -278,9 +284,9 @@ func MakeConfig(testnet *e2e.Testnet, node *e2e.Node) (*config.Config, error) {
 }
 
 // MakeAppConfig generates an ABCI application config for a node.
-func MakeAppConfig(testnet *e2e.Testnet, node *e2e.Node) ([]byte, error) {
+func MakeAppConfig(node *e2e.Node) ([]byte, error) {
 	cfg := map[string]interface{}{
-		"chain_id":          testnet.Name,
+		"chain_id":          node.Testnet.Name,
 		"dir":               "data/app",
 		"listen":            AppAddressUNIX,
 		"grpc":              false,
@@ -313,9 +319,9 @@ func MakeAppConfig(testnet *e2e.Testnet, node *e2e.Node) ([]byte, error) {
 		return nil, fmt.Errorf("unexpected privval protocol setting %q", node.PrivvalProtocol)
 	}
 
-	if len(testnet.ValidatorUpdates) > 0 {
+	if len(node.Testnet.ValidatorUpdates) > 0 {
 		validatorUpdates := map[string]map[string]int64{}
-		for height, validators := range testnet.ValidatorUpdates {
+		for height, validators := range node.Testnet.ValidatorUpdates {
 			updateVals := map[string]int64{}
 			for node, power := range validators {
 				updateVals[base64.StdEncoding.EncodeToString(node.Key.PubKey().Bytes())] = power
@@ -333,14 +339,9 @@ func MakeAppConfig(testnet *e2e.Testnet, node *e2e.Node) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// MakeNodeKey generates a node key.
-func MakeNodeKey(node *e2e.Node) *p2p.NodeKey {
-	return &p2p.NodeKey{PrivKey: node.Key}
-}
-
 // UpdateConfigStateSync updates the state sync config for a node.
-func UpdateConfigStateSync(dir string, node *e2e.Node, height int64, hash []byte) error {
-	cfgPath := filepath.Join(dir, node.Name, "config", "config.toml")
+func UpdateConfigStateSync(node *e2e.Node, height int64, hash []byte) error {
+	cfgPath := filepath.Join(node.Testnet.Dir, node.Name, "config", "config.toml")
 
 	// FIXME Apparently there's no function to simply load a config file without
 	// involving the entire Viper apparatus, so we'll just resort to regexps.

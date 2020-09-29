@@ -170,7 +170,7 @@ func (cli *CLI) runDocker(args ...string) error {
 // Setup generates the testnet configuration.
 func (cli *CLI) Setup() error {
 	logger.Info(fmt.Sprintf("Generating testnet files in %q", cli.testnet.Dir))
-	err := Setup(cli.testnet, cli.testnet.Dir)
+	err := Setup(cli.testnet)
 	if err != nil {
 		return err
 	}
@@ -231,7 +231,7 @@ func (cli *CLI) Start() error {
 	}
 	for _, node := range nodeQueue {
 		if node.StateSync {
-			err = UpdateConfigStateSync(cli.testnet.Dir, node, lastBlock.Block.Height, lastBlock.BlockID.Hash.Bytes())
+			err = UpdateConfigStateSync(node, lastBlock.Block.Height, lastBlock.BlockID.Hash.Bytes())
 			if err != nil {
 				return err
 			}
