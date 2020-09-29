@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	rpcclient "github.com/tendermint/tendermint/rpc/client"
+	rpchttp "github.com/tendermint/tendermint/rpc/client/http"
 	rpctypes "github.com/tendermint/tendermint/rpc/core/types"
 	e2e "github.com/tendermint/tendermint/test/e2e/pkg"
 	"github.com/tendermint/tendermint/types"
@@ -19,9 +19,14 @@ func waitForHeight(testnet *e2e.Testnet, height int64) (*types.Block, *types.Blo
 	var (
 		err          error
 		maxResult    *rpctypes.ResultBlock
-		clients      = map[string]rpcclient.Client{}
+		clients      = map[string]*rpchttp.HTTP{}
 		lastIncrease = time.Now()
 	)
+	defer func() {
+		for _, c := range clients {
+			c.Close()
+		}
+	}()
 
 	for {
 		for _, node := range testnet.Nodes {

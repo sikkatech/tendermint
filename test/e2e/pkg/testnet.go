@@ -14,7 +14,6 @@ import (
 
 	"github.com/tendermint/tendermint/crypto"
 	"github.com/tendermint/tendermint/crypto/ed25519"
-	rpc "github.com/tendermint/tendermint/rpc/client"
 	rpchttp "github.com/tendermint/tendermint/rpc/client/http"
 )
 
@@ -340,6 +339,16 @@ func (t Testnet) ArchiveNodes() []*Node {
 	return nodes
 }
 
+// RandomNode returns a random non-seed node.
+func (t Testnet) RandomNode() *Node {
+	for {
+		node := t.Nodes[rand.Intn(len(t.Nodes))]
+		if node.Mode != ModeSeed {
+			return node
+		}
+	}
+}
+
 // IPv6 returns true if the testnet is an IPv6 network.
 func (t Testnet) IPv6() bool {
 	return t.IP.IP.To4() == nil
@@ -370,7 +379,7 @@ func (n Node) AddressRPC() string {
 }
 
 // Client returns an RPC client for a node.
-func (n Node) Client() (rpc.Client, error) {
+func (n Node) Client() (*rpchttp.HTTP, error) {
 	return rpchttp.New(fmt.Sprintf("http://127.0.0.1:%v", n.ProxyPort), "/websocket")
 }
 

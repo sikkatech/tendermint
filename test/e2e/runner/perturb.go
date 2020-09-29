@@ -20,6 +20,7 @@ func Perturb(testnet *e2e.Testnet) error {
 			if status.SyncInfo.LatestBlockHeight > lastHeight {
 				lastHeight = status.SyncInfo.LatestBlockHeight
 			}
+			time.Sleep(3 * time.Second) // give network some time to recover between each
 		}
 	}
 

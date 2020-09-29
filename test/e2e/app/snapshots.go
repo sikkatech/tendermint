@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	snapshotChunkSize = 1024 // bytes
+	snapshotChunkSize = 1e6 // bytes
 )
 
 type SnapshotStore struct {
