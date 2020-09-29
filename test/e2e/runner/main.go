@@ -1,11 +1,8 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"sort"
 	"time"
 
@@ -48,10 +45,10 @@ func NewCLI() *CLI {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := cli.Cleanup(); err != nil {
+			if err := Cleanup(cli.testnet); err != nil {
 				return err
 			}
-			if err := cli.Setup(); err != nil {
+			if err := Setup(cli.testnet); err != nil {
 				return err
 			}
 			if err := cli.Start(); err != nil {
@@ -60,7 +57,7 @@ func NewCLI() *CLI {
 			if err := cli.Perturb(); err != nil {
 				return err
 			}
-			if err := cli.Cleanup(); err != nil {
+			if err := Cleanup(cli.testnet); err != nil {
 				return err
 			}
 			return nil
@@ -74,7 +71,7 @@ func NewCLI() *CLI {
 		Use:   "setup",
 		Short: "Generates the testnet directory and configuration",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return cli.Setup()
+			return Setup(cli.testnet)
 		},
 	})
 
@@ -98,7 +95,8 @@ func NewCLI() *CLI {
 		Use:   "stop",
 		Short: "Stops the Docker testnet",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return cli.Stop()
+			logger.Info("Stopping testnet")
+			return execCompose(cli.testnet.Dir, "down")
 		},
 	})
 
@@ -106,7 +104,7 @@ func NewCLI() *CLI {
 		Use:   "logs",
 		Short: "Shows the testnet logs",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return cli.Logs()
+			return execComposeVerbose("logs", "--follow")
 		},
 	})
 
@@ -114,7 +112,7 @@ func NewCLI() *CLI {
 		Use:   "cleanup",
 		Short: "Removes the testnet directory",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return cli.Cleanup()
+			return Cleanup(cli.testnet)
 		},
 	})
 
@@ -127,54 +125,6 @@ func (cli *CLI) Run() {
 		logger.Error(err.Error())
 		os.Exit(1)
 	}
-}
-
-// runCompose runs a Docker Compose command.
-func (cli *CLI) runCompose(args ...string) error {
-	args = append([]string{"-f", filepath.Join(cli.testnet.Dir, "docker-compose.yml")}, args...)
-	cmd := exec.Command("docker-compose", args...)
-	out, err := cmd.CombinedOutput()
-	switch err := err.(type) {
-	case nil:
-		return nil
-	case *exec.ExitError:
-		return fmt.Errorf("failed to run docker-compose %q:\n%v", args, string(out))
-	default:
-		return err
-	}
-}
-
-// runCompose runs a Docker Compose command and displays its output.
-func (cli *CLI) runComposeOutput(args ...string) error {
-	args = append([]string{"-f", filepath.Join(cli.testnet.Dir, "docker-compose.yml")}, args...)
-	cmd := exec.Command("docker-compose", args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
-}
-
-// runDocker runs a Docker command.
-func (cli *CLI) runDocker(args ...string) error {
-	cmd := exec.Command("docker", args...)
-	out, err := cmd.CombinedOutput()
-	switch err := err.(type) {
-	case nil:
-		return nil
-	case *exec.ExitError:
-		return fmt.Errorf("failed to run docker %q:\n%v", args, string(out))
-	default:
-		return err
-	}
-}
-
-// Setup generates the testnet configuration.
-func (cli *CLI) Setup() error {
-	logger.Info(fmt.Sprintf("Generating testnet files in %q", cli.testnet.Dir))
-	err := Setup(cli.testnet)
-	if err != nil {
-		return err
-	}
-	return nil
 }
 
 // Start starts the testnet. It waits for all nodes to become available.
@@ -205,7 +155,7 @@ func (cli *CLI) Start() error {
 		if mainNode == nil {
 			mainNode = node
 		}
-		if err := cli.runCompose("up", "-d", node.Name); err != nil {
+		if err := execCompose(cli.testnet.Dir, "up", "-d", node.Name); err != nil {
 			return err
 		}
 		if _, err := node.WaitFor(0, 10*time.Second); err != nil {
@@ -244,7 +194,7 @@ func (cli *CLI) Start() error {
 		if _, err := mainNode.WaitFor(node.StartAt, 1*time.Minute); err != nil {
 			return err
 		}
-		if err := cli.runCompose("up", "-d", node.Name); err != nil {
+		if err := execCompose(cli.testnet.Dir, "up", "-d", node.Name); err != nil {
 			return err
 		}
 		status, err := node.WaitFor(node.StartAt, 1*time.Minute)
@@ -266,36 +216,36 @@ func (cli *CLI) Perturb() error {
 			switch perturbation {
 			case e2e.PerturbationDisconnect:
 				logger.Info(fmt.Sprintf("Disconnecting node %v...", node.Name))
-				if err := cli.runDocker("network", "disconnect", cli.testnet.Name+"_"+cli.testnet.Name, node.Name); err != nil {
+				if err := execDocker("network", "disconnect", cli.testnet.Name+"_"+cli.testnet.Name, node.Name); err != nil {
 					return err
 				}
 				time.Sleep(5 * time.Second)
-				if err := cli.runDocker("network", "connect", cli.testnet.Name+"_"+cli.testnet.Name, node.Name); err != nil {
+				if err := execDocker("network", "connect", cli.testnet.Name+"_"+cli.testnet.Name, node.Name); err != nil {
 					return err
 				}
 
 			case e2e.PerturbationKill:
 				logger.Info(fmt.Sprintf("Killing node %v...", node.Name))
-				if err := cli.runCompose("kill", "-s", "SIGKILL", node.Name); err != nil {
+				if err := execCompose(cli.testnet.Dir, "kill", "-s", "SIGKILL", node.Name); err != nil {
 					return err
 				}
-				if err := cli.runCompose("start", node.Name); err != nil {
+				if err := execCompose(cli.testnet.Dir, "start", node.Name); err != nil {
 					return err
 				}
 
 			case e2e.PerturbationPause:
 				logger.Info(fmt.Sprintf("Pausing node %v...", node.Name))
-				if err := cli.runCompose("pause", node.Name); err != nil {
+				if err := execCompose(cli.testnet.Dir, "pause", node.Name); err != nil {
 					return err
 				}
 				time.Sleep(5 * time.Second)
-				if err := cli.runCompose("unpause", node.Name); err != nil {
+				if err := execCompose(cli.testnet.Dir, "unpause", node.Name); err != nil {
 					return err
 				}
 
 			case e2e.PerturbationRestart:
 				logger.Info(fmt.Sprintf("Restarting node %v...", node.Name))
-				if err := cli.runCompose("restart", node.Name); err != nil {
+				if err := execCompose(cli.testnet.Dir, "restart", node.Name); err != nil {
 					return err
 				}
 
@@ -330,42 +280,5 @@ func (cli *CLI) Perturb() error {
 		}
 	}
 
-	return nil
-}
-
-// Logs outputs testnet logs.
-func (cli *CLI) Logs() error {
-	return cli.runComposeOutput("logs", "--follow")
-}
-
-// Stop stops the testnet and removes the containers.
-func (cli *CLI) Stop() error {
-	logger.Info("Stopping testnet")
-	return cli.runCompose("down")
-}
-
-// Cleanup removes the Docker Compose containers and testnet directory.
-func (cli *CLI) Cleanup() error {
-	if cli.testnet.Dir == "" {
-		return errors.New("no directory set")
-	}
-	_, err := os.Stat(cli.testnet.Dir)
-	if os.IsNotExist(err) {
-		return nil
-	} else if err != nil {
-		return err
-	}
-
-	logger.Info("Removing Docker containers and networks")
-	err = cli.runCompose("down")
-	if err != nil {
-		return err
-	}
-
-	logger.Info(fmt.Sprintf("Removing testnet directory %q", cli.testnet.Dir))
-	err = os.RemoveAll(cli.testnet.Dir)
-	if err != nil {
-		return err
-	}
 	return nil
 }
