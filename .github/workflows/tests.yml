@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v2.3.4
       - uses: technote-space/get-diff-action@v3
         with:
           SUFFIX_FILTER: |
@@ -57,7 +57,7 @@ jobs:
     needs: Build
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v2.3.4
       - uses: technote-space/get-diff-action@v3
         with:
           SUFFIX_FILTER: |
@@ -91,7 +91,7 @@ jobs:
     needs: Build
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v2.3.4
       - uses: technote-space/get-diff-action@v3
         with:
           SUFFIX_FILTER: |
@@ -124,7 +124,7 @@ jobs:
     needs: Build
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v2.3.4
       - uses: technote-space/get-diff-action@v3
         with:
           SUFFIX_FILTER: |
